@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>결과물 하자 개선 요청서 시스템</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<style>
+  :root{
+    --primary:#1a3c6e; --bg:#f5f6f8; --card:#ffffff; --border:#dfe3e8;
+    --danger:#c0392b; --text:#222; --muted:#777;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;
+    background:var(--bg); margin:0; padding:0; color:var(--text);
+  }
+  header{
+    background:var(--primary); color:#fff; padding:16px 20px;
+    font-size:18px; font-weight:700; display:flex; align-items:center; justify-content:space-between;
+  }
+  header .sub{font-size:12px; font-weight:400; opacity:.85; margin-top:2px;}
+  .wrap{max-width:520px; margin:0 auto; padding:16px;}
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:18px; margin-bottom:14px;
+  }
+  h2{font-size:16px; margin:0 0 12px;}
+  label{display:block; font-size:13px; color:var(--muted); margin:12px 0 4px;}
+  input,select,textarea{
+    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
+    font-size:15px; font-family:inherit; background:#fff;
+  }
+  textarea{min-height:90px; resize:vertical;}
+  button{
+    width:100%; padding:13px; border:none; border-radius:8px; background:var(--primary);
+    color:#fff; font-size:15px; font-weight:600; margin-top:14px; cursor:pointer;
+  }
+  button.secondary{background:#fff; color:var(--primary); border:1px solid var(--primary);}
+  button.small{width:auto; padding:8px 14px; font-size:13px; margin-top:0;}
+  button:disabled{opacity:.5;}
+  .hidden{display:none !important;}
+  .row{display:flex; gap:8px;}
+  .row > *{flex:1;}
+  .muted{color:var(--muted); font-size:13px;}
+  .link{color:var(--primary); text-decoration:underline; cursor:pointer; font-size:13px;}
+  table.list{width:100%; border-collapse:collapse; font-size:13px; margin-top:8px;}
+  table.list th, table.list td{border-bottom:1px solid var(--border); padding:8px 6px; text-align:left;}
+  .photo-grid{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
+  .photo-thumb{position:relative; width:72px; height:72px;}
+  .photo-thumb img{width:100%; height:100%; object-fit:cover; border-radius:6px;}
+  .photo-thumb .rm{
+    position:absolute; top:-6px; right:-6px; background:var(--danger); color:#fff;
+    width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:12px; cursor:pointer;
+  }
+  .status{display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;}
+  .status.sent{background:#e3f7e8; color:#1e7e34;}
+  .status.pending{background:#fff4e0; color:#b06d00;}
+  .status.failed{background:#fde8e8; color:var(--danger);}
+  #toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:#222; color:#fff; padding:10px 18px; border-radius:8px; font-size:13px;
+    display:none; z-index:999; max-width:90%; text-align:center;
+  }
+  .topbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div>결과물 하자 개선 요청서</div>
+    <div class="sub" id="storeBadge">매장 접속 필요</div>
+  </div>
+  <div class="link" id="logoutBtn" style="color:#fff; display:none;">나가기</div>
+</header>
+
+<div class="wrap">
+
+  <!-- ================= 화면 0: 진입 ================= -->
+  <div id="screen-entry" class="card">
+    <h2>매장코드 입력</h2>
+    <label>매장코드</label>
+    <input id="entryCode" placeholder="예: SF-0921" autocomplete="off">
+    <button onclick="enterStore()">접속</button>
+    <div style="margin-top:16px; text-align:center;">
+      <span class="link" onclick="showScreen('admin-login')">관리자 화면 (매장코드/수급사 관리)</span>
+    </div>
+  </div>
+
+  <!-- ================= 관리자 로그인 ================= -->
+  <div id="screen-admin-login" class="card hidden">
+    <h2>관리자 인증</h2>
+    <label>관리자 비밀번호</label>
+    <input id="adminPw" type="password">
+    <button onclick="adminLogin()">확인</button>
+    <div style="margin-top:12px; text-align:center;">
+      <span class="link" onclick="showScreen('entry')">뒤로</span>
+    </div>
+  </div>
+
+  <!-- ================= 관리자 메뉴 ================= -->
+  <div id="screen-admin" class="card hidden">
+    <h2>관리자 메뉴</h2>
+    <button onclick="showScreen('admin-store-new')">매장코드 생성</button>
+    <button class="secondary" onclick="loadStoreList(); showScreen('admin-store-list')">매장 목록</button>
+    <button class="secondary" onclick="loadSubList(); showScreen('admin-sub')">수급사 관리</button>
+  </div>
+
+  <!-- ================= 매장코드 생성 ================= -->
+  <div id="screen-admin-store-new" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">매장코드 생성</h2><span class="link" onclick="showScreen('admin')">메뉴로</span></div>
+    <label>브랜드</label>
+    <select id="newBrand"></select>
+    <label>매장명</label>
+    <input id="newStoreName" placeholder="예: 스타필드시티 부천점">
+    <label>매장 담당자명</label>
+    <input id="newManagerName">
+    <label>매장 담당자 이메일</label>
+    <input id="newManagerEmail" type="email">
+    <label>매장코드 (직접 지정, 미입력시 자동생성)</label>
+    <input id="newStoreCode" placeholder="예: BUCHEON01">
+    <button onclick="createStore()">생성</button>
+  </div>
+
+  <!-- ================= 매장 목록 ================= -->
+  <div id="screen-admin-store-list" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">매장 목록</h2><span class="link" onclick="showScreen('admin')">메뉴로</span></div>
+    <table class="list" id="storeListTable">
+      <thead><tr><th>코드</th><th>매장명</th><th>브랜드</th><th>담당자</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- ================= 수급사 관리 ================= -->
+  <div id="screen-admin-sub" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">수급사 관리</h2><span class="link" onclick="showScreen('admin')">메뉴로</span></div>
+    <table class="list" id="subListTable">
+      <thead><tr><th>업체명</th><th>현장대리인</th><th>이메일</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button onclick="openSubForm(null)">+ 수급사 추가</button>
+  </div>
+
+  <div id="screen-admin-sub-form" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;" id="subFormTitle">수급사 추가</h2><span class="link" onclick="loadSubList(); showScreen('admin-sub')">목록으로</span></div>
+    <input type="hidden" id="subId">
+    <label>업체명</label>
+    <input id="subCompanyName">
+    <label>현장대리인명</label>
+    <input id="subManagerName">
+    <label>이메일</label>
+    <input id="subEmail" type="email">
+    <button onclick="saveSub()">저장</button>
+  </div>
+
+  <!-- ================= 매장 홈 (하자작성 / 이력) ================= -->
+  <div id="screen-store-home" class="card hidden">
+    <h2>메뉴</h2>
+    <button onclick="openReportForm()">하자개선요청서 작성</button>
+    <button class="secondary" onclick="loadHistory(); showScreen('store-history')">발송 이력</button>
+  </div>
+
+  <!-- ================= 하자 작성 폼 ================= -->
+  <div id="screen-report-form" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">하자개선요청서 작성</h2><span class="link" onclick="showScreen('store-home')">취소</span></div>
+
+    <label>수급사 선택</label>
+    <select id="reportSub" onchange="fillSubInfo()"></select>
+    <div class="muted" id="subInfoPreview"></div>
+    <div class="link" onclick="toggleSubEdit()" style="margin-top:6px;">매핑 정보 수정</div>
+    <div id="subEditBox" class="hidden" style="margin-top:8px;">
+      <label>수급인 회사명</label><input id="editCompanyName">
+      <label>현장대리인명</label><input id="editManagerName">
+      <label>수신 이메일</label><input id="editEmail" type="email">
+    </div>
+
+    <label>수행일자</label>
+    <input id="reportWorkDate" type="date">
+
+    <label>수행장소</label>
+    <input id="reportLocation" readonly>
+
+    <label>수행작업</label>
+    <input id="reportWorkType" placeholder="예: 샐러드바 청소">
+
+    <label>하자 개선 요청사항</label>
+    <textarea id="reportDesc" placeholder="예: 업무범위와 관련된 개선 요청 - 다수의 오염 발생"></textarea>
+
+    <label>사진 첨부 (최대 5장)</label>
+    <input id="reportPhotos" type="file" accept="image/*" multiple capture="environment">
+    <div class="photo-grid" id="photoPreview"></div>
+
+    <button id="submitBtn" onclick="submitReport()">요청서 생성 및 발송</button>
+    <div class="muted" id="submitStatus" style="margin-top:8px;"></div>
+  </div>
+
+  <!-- ================= 발송 이력 ================= -->
+  <div id="screen-store-history" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">발송 이력</h2><span class="link" onclick="showScreen('store-home')">메뉴로</span></div>
+    <table class="list" id="historyTable">
+      <thead><tr><th>수행일자</th><th>수급사</th><th>상태</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   설정값 — 배포 전 반드시 채워넣을 것
+   ============================================================ */
+const SUPABASE_URL = "https://okujibesekhagmcpwqxt.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_1mLfctWo4PE4jUrwhAPSxA_lH9gebUB";
+const EDGE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/send-defect-email";
+const ADMIN_PASSWORD = "2496";   // 실제 운영 전 반드시 변경
+const DOGUP_IN = "주식회사 이랜드이츠"; // 도급인 고정값
+
+const BRANDS = ["애슐리퀸즈","델리바이애슐리","리미니","자연별곡","피자몰","로운","프랑제리","프랜차이즈","카페"];
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ============================================================
+   상태
+   ============================================================ */
+let currentStore = null;   // {id, store_code, store_name, brand, manager_name, manager_email}
+let subcontractors = [];   // 캐시
+let selectedPhotos = [];   // File[]
+
+/* ============================================================
+   공통 유틸
+   ============================================================ */
+function showScreen(name){
+  document.querySelectorAll('[id^="screen-"]').forEach(el=>el.classList.add('hidden'));
+  document.getElementById('screen-'+name).classList.remove('hidden');
+}
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display='block';
+  setTimeout(()=>t.style.display='none', 2800);
+}
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function genStoreCode(brand){
+  return (brand.slice(0,2) + '-' + Math.floor(1000+Math.random()*9000)).toUpperCase();
+}
+
+/* ============================================================
+   매장 진입
+   ============================================================ */
+async function enterStore(){
+  const code = document.getElementById('entryCode').value.trim();
+  if(!code){ toast('매장코드를 입력해줘'); return; }
+  const { data, error } = await sb.from('stores').select('*').eq('store_code', code).maybeSingle();
+  if(error || !data){ toast('존재하지 않는 매장코드야'); return; }
+  currentStore = data;
+  document.getElementById('storeBadge').textContent = `${data.brand} · ${data.store_name}`;
+  document.getElementById('logoutBtn').style.display='block';
+  await loadSubcontractorsCache();
+  showScreen('store-home');
+}
+document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  currentStore = null;
+  document.getElementById('storeBadge').textContent = '매장 접속 필요';
+  document.getElementById('logoutBtn').style.display='none';
+  showScreen('entry');
+});
+
+/* ============================================================
+   관리자
+   ============================================================ */
+function adminLogin(){
+  if(document.getElementById('adminPw').value === ADMIN_PASSWORD){
+    showScreen('admin');
+  } else {
+    toast('비밀번호가 틀렸어');
+  }
+}
+
+function initBrandSelect(){
+  const sel = document.getElementById('newBrand');
+  sel.innerHTML = BRANDS.map(b=>`<option value="${b}">${b}</option>`).join('');
+}
+initBrandSelect();
+
+async function createStore(){
+  const brand = document.getElementById('newBrand').value;
+  const store_name = document.getElementById('newStoreName').value.trim();
+  const manager_name = document.getElementById('newManagerName').value.trim();
+  const manager_email = document.getElementById('newManagerEmail').value.trim();
+  let store_code = document.getElementById('newStoreCode').value.trim();
+  if(!store_name || !manager_name || !manager_email){ toast('필수 항목을 모두 입력해줘'); return; }
+  if(!store_code) store_code = genStoreCode(brand);
+
+  const { error } = await sb.from('stores').insert({
+    store_code, store_name, brand, manager_name, manager_email
+  });
+  if(error){ toast('생성 실패: ' + error.message); return; }
+  toast(`매장코드 생성 완료: ${store_code}`);
+  document.getElementById('newStoreName').value='';
+  document.getElementById('newManagerName').value='';
+  document.getElementById('newManagerEmail').value='';
+  document.getElementById('newStoreCode').value='';
+}
+
+async function loadStoreList(){
+  const { data, error } = await sb.from('stores').select('*').order('created_at', {ascending:false});
+  const tbody = document.querySelector('#storeListTable tbody');
+  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회 실패</td></tr>`; return; }
+  tbody.innerHTML = data.map(s=>`<tr><td>${s.store_code}</td><td>${s.store_name}</td><td>${s.brand}</td><td>${s.manager_name}</td></tr>`).join('');
+}
+
+/* ---- 수급사 관리 ---- */
+async function loadSubList(){
+  const { data, error } = await sb.from('subcontractors').select('*').order('company_name');
+  const tbody = document.querySelector('#subListTable tbody');
+  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회 실패</td></tr>`; return; }
+  subcontractors = data;
+  tbody.innerHTML = data.map(s=>`
+    <tr>
+      <td>${s.company_name}</td><td>${s.site_manager_name}</td><td>${s.email}</td>
+      <td><span class="link" onclick='openSubForm(${JSON.stringify(s)})'>수정</span></td>
+    </tr>`).join('');
+}
+
+function openSubForm(sub){
+  document.getElementById('subFormTitle').textContent = sub ? '수급사 수정' : '수급사 추가';
+  document.getElementById('subId').value = sub ? sub.id : '';
+  document.getElementById('subCompanyName').value = sub ? sub.company_name : '';
+  document.getElementById('subManagerName').value = sub ? sub.site_manager_name : '';
+  document.getElementById('subEmail').value = sub ? sub.email : '';
+  showScreen('admin-sub-form');
+}
+
+async function saveSub(){
+  const id = document.getElementById('subId').value;
+  const payload = {
+    company_name: document.getElementById('subCompanyName').value.trim(),
+    site_manager_name: document.getElementById('subManagerName').value.trim(),
+    email: document.getElementById('subEmail').value.trim(),
+    updated_at: new Date().toISOString()
+  };
+  if(!payload.company_name || !payload.site_manager_name || !payload.email){ toast('필수 항목을 입력해줘'); return; }
+
+  const { error } = id
+    ? await sb.from('subcontractors').update(payload).eq('id', id)
+    : await sb.from('subcontractors').insert(payload);
+
+  if(error){ toast('저장 실패: ' + error.message); return; }
+  toast('저장 완료');
+  await loadSubList();
+  showScreen('admin-sub');
+}
+
+/* ============================================================
+   매장 화면 — 하자 작성
+   ============================================================ */
+async function loadSubcontractorsCache(){
+  const { data } = await sb.from('subcontractors').select('*').order('company_name');
+  subcontractors = data || [];
+}
+
+function openReportForm(){
+  const sel = document.getElementById('reportSub');
+  sel.innerHTML = subcontractors.map(s=>`<option value="${s.id}">${s.company_name}</option>`).join('');
+  document.getElementById('reportWorkDate').value = todayStr();
+  document.getElementById('reportLocation').value = `${currentStore.brand} (${currentStore.store_name})`;
+  document.getElementById('reportWorkType').value = '';
+  document.getElementById('reportDesc').value = '';
+  document.getElementById('subEditBox').classList.add('hidden');
+  selectedPhotos = [];
+  document.getElementById('photoPreview').innerHTML = '';
+  document.getElementById('submitStatus').textContent = '';
+  if(subcontractors.length) fillSubInfo();
+  showScreen('report-form');
+}
+
+function fillSubInfo(){
+  const id = document.getElementById('reportSub').value;
+  const sub = subcontractors.find(s=>s.id===id);
+  if(!sub) return;
+  document.getElementById('subInfoPreview').textContent = `현장대리인: ${sub.site_manager_name} / 수신: ${sub.email}`;
+  document.getElementById('editCompanyName').value = sub.company_name;
+  document.getElementById('editManagerName').value = sub.site_manager_name;
+  document.getElementById('editEmail').value = sub.email;
+}
+function toggleSubEdit(){
+  document.getElementById('subEditBox').classList.toggle('hidden');
+}
+
+document.getElementById('reportPhotos').addEventListener('change', (e)=>{
+  const files = Array.from(e.target.files).slice(0, 5 - selectedPhotos.length);
+  selectedPhotos = selectedPhotos.concat(files).slice(0,5);
+  renderPhotoPreview();
+  e.target.value = '';
+});
+function renderPhotoPreview(){
+  const box = document.getElementById('photoPreview');
+  box.innerHTML = '';
+  selectedPhotos.forEach((f, i)=>{
+    const url = URL.createObjectURL(f);
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${url}"><div class="rm" onclick="removePhoto(${i})">×</div>`;
+    box.appendChild(div);
+  });
+}
+function removePhoto(i){
+  selectedPhotos.splice(i,1);
+  renderPhotoPreview();
+}
+
+/* ---- 문서(.docx) 생성 ---- */
+async function buildDocx(payload, photoFiles){
+  const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun,
+          WidthType, ImageRun, AlignmentType, VerticalAlign, ShadingType } = window.docx;
+
+  const headerCell = (text, opts={}) => new TableCell({
+    width: {size: 20, type: WidthType.PERCENTAGE},
+    shading: {type: ShadingType.CLEAR, fill: "EFEFEF"},
+    verticalAlign: VerticalAlign.CENTER,
+    children: [new Paragraph({children:[new TextRun({text, bold:true})]})],
+    ...opts
+  });
+  const valueCell = (text, opts={}) => new TableCell({
+    verticalAlign: VerticalAlign.CENTER,
+    children: [new Paragraph({children:[new TextRun({text: String(text)})]})],
+    ...opts
+  });
+
+  const photoParas = [];
+  for(const f of photoFiles){
+    const buf = await f.arrayBuffer();
+    photoParas.push(new Paragraph({
+      children: [new ImageRun({ data: buf, transformation: {width: 260, height: 195} })],
+      spacing: {after: 120}
+    }));
+  }
+  if(photoParas.length === 0){
+    photoParas.push(new Paragraph({children:[new TextRun({text:"(첨부 사진 없음)", color:"888888"})]}));
+  }
+
+  const table = new Table({
+    width: {size: 100, type: WidthType.PERCENTAGE},
+    rows: [
+      new TableRow({children: [ new TableCell({
+        columnSpan: 2,
+        shading: {type: ShadingType.CLEAR, fill: "1A3C6E"},
+        children: [new Paragraph({alignment: AlignmentType.CENTER, children:[new TextRun({text:"결과물 하자 개선 요청서", bold:true, color:"FFFFFF", size:32})]})]
+      })]}),
+      new TableRow({children: [headerCell('작성일자'), valueCell(payload.writtenDate)]}),
+      new TableRow({children: [headerCell('도급인'), valueCell(DOGUP_IN)]}),
+      new TableRow({children: [headerCell('수급인'), valueCell(payload.companyName)]}),
+      new TableRow({children: [headerCell('현장대리인'), valueCell(payload.siteManagerName)]}),
+      new TableRow({children: [ new TableCell({
+        columnSpan: 2,
+        children: [new Paragraph({children:[new TextRun({
+          text:"※본 요청서는 귀사와 당사가 체결한 업무 도급 계약에 따른 결과물 하자 개선 요청서로, 본 요청서에 따른 업무 수행 및 결과물 개선이 이루어지지 않을 경우 제21조 등 계약상 관련 조항에 따른 조치가 진행될 수 있음을 숙지하여 주시기 바랍니다.",
+          size:18, italics:true})]})]
+      })]}),
+      new TableRow({children: [headerCell('1. 수행일자'), valueCell(payload.workDate)]}),
+      new TableRow({children: [headerCell('2. 수행장소'), valueCell(payload.workLocation)]}),
+      new TableRow({children: [headerCell('3. 수행작업'), valueCell(payload.workType)]}),
+      new TableRow({children: [headerCell('4. 하자 개선 요청사항'), valueCell(payload.description)]}),
+      new TableRow({children: [
+        new TableCell({verticalAlign: VerticalAlign.TOP, children:[new Paragraph({children:[new TextRun({text:'5. 사진', bold:true})]})]}),
+        new TableCell({children: photoParas})
+      ]}),
+    ]
+  });
+
+  const doc = new Document({
+    sections: [{ children: [table] }]
+  });
+  return await Packer.toBlob(doc);
+}
+
+/* ---- 제출: 문서 생성 → Storage 업로드 → DB 기록 → 메일 발송 요청 ---- */
+async function submitReport(){
+  const subId = document.getElementById('reportSub').value;
+  const workDate = document.getElementById('reportWorkDate').value;
+  const workType = document.getElementById('reportWorkType').value.trim();
+  const description = document.getElementById('reportDesc').value.trim();
+  if(!subId || !workDate || !workType || !description){ toast('필수 항목을 모두 입력해줘'); return; }
+
+  const companyName = document.getElementById('editCompanyName').value.trim();
+  const siteManagerName = document.getElementById('editManagerName').value.trim();
+  const subEmail = document.getElementById('editEmail').value.trim();
+
+  const btn = document.getElementById('submitBtn');
+  const statusEl = document.getElementById('submitStatus');
+  btn.disabled = true; statusEl.textContent = '문서 생성 중...';
+
+  try{
+    // 1) docx 생성
+    const blob = await buildDocx({
+      writtenDate: todayStr(),
+      companyName, siteManagerName,
+      workDate, workLocation: `${currentStore.brand} (${currentStore.store_name})`,
+      workType, description
+    }, selectedPhotos);
+
+    // 2) Storage 업로드 (문서 + 사진)
+    statusEl.textContent = '업로드 중...';
+    const stamp = Date.now();
+    const docPath = `${currentStore.store_code}/${stamp}_요청서.docx`;
+    const { error: docErr } = await sb.storage.from('defect-reports').upload(docPath, blob);
+    if(docErr) throw new Error('문서 업로드 실패: ' + docErr.message);
+
+    const photoPaths = [];
+    for(let i=0;i<selectedPhotos.length;i++){
+      const p = `${currentStore.store_code}/${stamp}_photo${i+1}.jpg`;
+      const { error: pErr } = await sb.storage.from('defect-reports').upload(p, selectedPhotos[i]);
+      if(!pErr) photoPaths.push(p);
+    }
+
+    // 3) DB 기록
+    statusEl.textContent = '이력 저장 중...';
+    const { data: sub, error: insErr } = await sb.from('submissions').insert({
+      store_id: currentStore.id,
+      subcontractor_id: subId,
+      work_date: workDate,
+      work_location: `${currentStore.brand} (${currentStore.store_name})`,
+      work_type: workType,
+      defect_description: description,
+      photo_urls: photoPaths,
+      document_url: docPath,
+      email_status: 'pending'
+    }).select().single();
+    if(insErr) throw new Error('이력 저장 실패: ' + insErr.message);
+
+    // 4) 메일 발송 요청 (Edge Function) — IT 설정 전에는 실패할 수 있음
+    statusEl.textContent = '메일 발송 요청 중...';
+    try{
+      const res = await fetch(EDGE_FUNCTION_URL, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY},
+        body: JSON.stringify({
+          submission_id: sub.id,
+          to: subEmail,
+          reply_to: currentStore.manager_email,
+          subject: `[${currentStore.brand}] 결과물 하자 개선 요청서 - ${currentStore.store_name}`,
+          document_path: docPath
+        })
+      });
+      if(!res.ok) throw new Error(await res.text());
+      await sb.from('submissions').update({email_status:'sent'}).eq('id', sub.id);
+      toast('요청서 생성 및 메일 발송 완료');
+    }catch(mailErr){
+      await sb.from('submissions').update({email_status:'failed', email_error: String(mailErr)}).eq('id', sub.id);
+      toast('문서는 저장됐지만 메일 발송은 실패했어 (IT 설정 확인 필요)');
+    }
+
+    showScreen('store-home');
+  }catch(err){
+    toast(String(err.message || err));
+  }finally{
+    btn.disabled = false; statusEl.textContent = '';
+  }
+}
+
+/* ============================================================
+   발송 이력
+   ============================================================ */
+async function loadHistory(){
+  const { data, error } = await supabase
+    .from('submissions')
+    .select('*, subcontractors(company_name)')
+    .eq('store_id', currentStore.id)
+    .order('created_at', {ascending:false});
+  const tbody = document.querySelector('#historyTable tbody');
+  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회 실패</td></tr>`; return; }
+  tbody.innerHTML = data.map(r=>{
+    const label = r.email_status==='sent' ? '발송완료' : r.email_status==='failed' ? '발송실패' : '대기중';
+    return `<tr>
+      <td>${r.work_date}</td>
+      <td>${r.subcontractors?.company_name || '-'}</td>
+      <td><span class="status ${r.email_status}">${label}</span></td>
+      <td>${r.document_url ? `<span class="link" onclick="downloadDoc('${r.document_url}')">문서</span>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function downloadDoc(path){
+  const { data, error } = await sb.storage.from('defect-reports').createSignedUrl(path, 60);
+  if(error){ toast('다운로드 링크 생성 실패'); return; }
+  window.open(data.signedUrl, '_blank');
+}
+</script>
+</body>
+</html>
