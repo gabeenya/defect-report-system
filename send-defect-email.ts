@@ -21,6 +21,14 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+// 브라우저(GitHub Pages)에서 호출하므로 CORS 허용 헤더 필수.
+// 없으면 브라우저가 preflight(OPTIONS)에서 요청을 막아버림.
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, content-type",
+};
+
 async function getGraphToken(): Promise<string> {
   const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
   const body = new URLSearchParams({
@@ -43,14 +51,17 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return new Response("Method not allowed", { status: 405, headers: corsHeaders });
   }
 
   try {
     const { to, reply_to, subject, document_path } = await req.json();
     if (!to || !subject || !document_path) {
-      return new Response("필수 파라미터 누락", { status: 400 });
+      return new Response("필수 파라미터 누락", { status: 400, headers: corsHeaders });
     }
 
     // 1) Storage에서 문서 다운로드 (service role — 정책 우회)
@@ -105,9 +116,9 @@ Deno.serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ ok: true }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    return new Response(String(err.message || err), { status: 500 });
+    return new Response(String((err as Error).message || err), { status: 500, headers: corsHeaders });
   }
 });
