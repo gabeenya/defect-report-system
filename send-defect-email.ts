@@ -1,18 +1,23 @@
 // Supabase Edge Function: send-defect-email
 // 역할: Storage에 저장된 하자개선요청서(.pdf)를 첨부하여
-//       Gmail 계정(SMTP)으로 수급사에게 메일 발송
+//       SMTP(Gmail, 네이버 메일 등)로 수급사에게 메일 발송
 //
 // 필요 환경변수 (Supabase 대시보드 > Edge Functions > Secrets 에서 등록):
-//   GMAIL_ADDRESS      - 발신용 Gmail 주소 (예: elandeats.defect@gmail.com)
-//   GMAIL_APP_PASSWORD - Gmail 앱 비밀번호 (Google 계정에서 2단계 인증 켠 뒤 발급,
-//                        평소 로그인 비밀번호가 아님)
+//   SMTP_HOST     - 메일 서버 주소 (Gmail: smtp.gmail.com / 네이버: smtp.naver.com)
+//   SMTP_USER     - 발신 계정 전체 아이디 (Gmail: user@gmail.com / 네이버: user@naver.com)
+//   SMTP_PASSWORD - Gmail: 2단계 인증 후 발급한 "앱 비밀번호" (일반 로그인 비밀번호 아님)
+//                   네이버: 2단계 인증을 켰다면 네이버 "앱 비밀번호", 아니면 로그인 비밀번호
+//                   (네이버 메일 환경설정 > POP3/IMAP 설정에서 SMTP 사용을 켜둬야 함)
+//   SMTP_FROM     - (선택) 발신자로 표시할 주소. 비워두면 SMTP_USER 사용
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY - Supabase가 자동 주입
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
-const GMAIL_ADDRESS = Deno.env.get("GMAIL_ADDRESS")!;
-const GMAIL_APP_PASSWORD = Deno.env.get("GMAIL_APP_PASSWORD")!;
+const SMTP_HOST = Deno.env.get("SMTP_HOST")!;
+const SMTP_USER = Deno.env.get("SMTP_USER")!;
+const SMTP_PASSWORD = Deno.env.get("SMTP_PASSWORD")!;
+const SMTP_FROM = Deno.env.get("SMTP_FROM") || SMTP_USER;
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -56,21 +61,21 @@ Deno.serve(async (req) => {
     const base64 = arrayBufferToBase64(buf);
     const fileName = document_path.split("/").pop() || "하자개선요청서.pdf";
 
-    // 2) Gmail SMTP로 메일 발송 (공용 Gmail 계정 발신, Reply-To는 매장 담당자)
+    // 2) SMTP로 메일 발송 (공용 계정 발신, Reply-To는 매장 담당자)
     const client = new SMTPClient({
       connection: {
-        hostname: "smtp.gmail.com",
+        hostname: SMTP_HOST,
         port: 465,
         tls: true,
         auth: {
-          username: GMAIL_ADDRESS,
-          password: GMAIL_APP_PASSWORD,
+          username: SMTP_USER,
+          password: SMTP_PASSWORD,
         },
       },
     });
 
     await client.send({
-      from: GMAIL_ADDRESS,
+      from: SMTP_FROM,
       to,
       replyTo: reply_to || undefined,
       subject,

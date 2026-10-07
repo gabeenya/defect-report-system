@@ -26,18 +26,35 @@ const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                  // 1번에서 복사
 여기까지 하면 **매장코드 생성 · 수급사 관리 · 하자 작성 · 문서(.pdf) 자동생성 · 발송이력**까지 전부 동작해.
 메일 발송만 4번 완료 전까지는 "발송 실패"로 기록되고, 문서 자체는 이력에서 다운로드 가능해.
 
-## 4. 메일 발송 연동 (Gmail 계정, IT팀 승인 불필요)
+## 4. 메일 발송 연동 (Gmail 또는 네이버 메일, IT팀 승인 불필요)
 
-회사 메일 주소를 쓸 수 없는 경우를 대비해, 마이크로소프트 Graph API(IT팀 자격증명 필요) 대신 **일반 Gmail 계정의 SMTP**로 발송하도록 구성되어 있음.
+회사 메일 주소를 쓸 수 없는 경우를 대비해, 마이크로소프트 Graph API(IT팀 자격증명 필요) 대신 **일반 메일 계정의 SMTP**로 발송하도록 구성되어 있음. Gmail, 네이버 메일 둘 다 가능 — 아래 Secrets 값만 다르게 넣으면 됨.
 
-1. 발신용 Gmail 계정 준비 (새로 만들거나 기존 계정 사용, 예: `elandeats.defect@gmail.com`)
-2. 그 Gmail 계정에서 **2단계 인증(2-Step Verification)** 켜기 — [myaccount.google.com/security](https://myaccount.google.com/security)
-3. **앱 비밀번호** 발급 — [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 에서 앱 이름 아무거나 입력(예: `defect-report`) → 생성된 16자리 비밀번호 복사 (평소 로그인 비밀번호와 다름, 한 번만 보여줌)
-4. Supabase 대시보드 → **Edge Functions** → **Deploy a new function** (또는 Create) → 이름 `send-defect-email` 입력 → 코드 편집창에 `send-defect-email.ts` 내용 전체 붙여넣기 → **Deploy**
-5. 방금 만든 함수의 **Secrets** 탭에서 등록:
-   - `GMAIL_ADDRESS` — 2번에서 쓴 Gmail 주소
-   - `GMAIL_APP_PASSWORD` — 3번에서 발급받은 16자리 앱 비밀번호
-6. 완료되면 이후 제출 건부터 자동 메일 발송 정상 동작 (기존 "발송 실패" 건은 이력 화면에서 문서만 재확인/수동발송 필요)
+### 4-A. Gmail로 할 경우
+
+1. 발신용 Gmail 계정 준비 (예: `elandeats.defect@gmail.com`)
+2. **2단계 인증** 켜기 — [myaccount.google.com/security](https://myaccount.google.com/security)
+3. **앱 비밀번호** 발급 — [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) 에서 앱 이름 아무거나 입력 → 생성된 16자리 비밀번호 복사 (평소 로그인 비밀번호와 다름, 한 번만 보여줌)
+4. Secrets에 등록할 값:
+   - `SMTP_HOST` = `smtp.gmail.com`
+   - `SMTP_USER` = Gmail 주소
+   - `SMTP_PASSWORD` = 발급받은 16자리 앱 비밀번호
+
+### 4-B. 네이버 메일로 할 경우
+
+1. 발신용 네이버 계정 준비
+2. 네이버 메일 접속 → **환경설정 > POP3/IMAP 설정** 탭 → **POP3/SMTP 사용**을 "사용함"으로 변경 → 저장
+3. 네이버 계정에 2단계 인증(OTP)을 켜둔 상태라면 **네이버 아이디 > 보안설정 > 앱 비밀번호**에서 앱 비밀번호 발급 (안 켜놨으면 로그인 비밀번호 그대로 사용 가능)
+4. Secrets에 등록할 값:
+   - `SMTP_HOST` = `smtp.naver.com`
+   - `SMTP_USER` = 네이버 아이디 전체 (예: `elandeats.defect@naver.com`)
+   - `SMTP_PASSWORD` = 로그인 비밀번호 또는 2번에서 발급받은 앱 비밀번호
+
+### 공통 배포 단계
+
+1. Supabase 대시보드 → **Edge Functions** → **Deploy a new function** (또는 Create) → 이름 `send-defect-email` 입력 → 코드 편집창에 `send-defect-email.ts` 내용 전체 붙여넣기 → **Deploy**
+2. 함수의 **Secrets** 탭에서 위 4-A 또는 4-B의 값 등록 (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`)
+3. 완료되면 이후 제출 건부터 자동 메일 발송 정상 동작 (기존 "발송 실패" 건은 이력 화면에서 문서만 재확인/수동발송 필요)
 
 메일 제목은 `[이랜드이츠] 하자개선 요청서`로 고정되어 있음 (index.html의 `MAIL_SUBJECT` 값).
 
