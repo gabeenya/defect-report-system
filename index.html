@@ -4,77 +4,101 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>결과물 하자 개선 요청서 시스템</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
   :root{
-    --primary:#1a3c6e; --bg:#f5f6f8; --card:#ffffff; --border:#dfe3e8;
-    --danger:#c0392b; --text:#222; --muted:#777;
+    --primary:#102a4c; --primary-light:#1d3f6e; --accent:#b08d3f;
+    --bg:#eef1f5; --card:#ffffff; --border:#dfe3ea;
+    --danger:#c0392b; --text:#1c2430; --muted:#707a89;
   }
   *{box-sizing:border-box;}
   body{
-    font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;
+    font-family:'Noto Sans KR',-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;
     background:var(--bg); margin:0; padding:0; color:var(--text);
+    -webkit-font-smoothing:antialiased;
   }
   header{
-    background:var(--primary); color:#fff; padding:16px 20px;
-    font-size:18px; font-weight:700; display:flex; align-items:center; justify-content:space-between;
+    background:linear-gradient(135deg,var(--primary),var(--primary-light));
+    color:#fff; padding:18px 20px 16px; border-bottom:3px solid var(--accent);
+    display:flex; align-items:flex-start; justify-content:space-between;
   }
-  header .sub{font-size:12px; font-weight:400; opacity:.85; margin-top:2px;}
-  .wrap{max-width:520px; margin:0 auto; padding:16px;}
+  header .company{font-size:11px; letter-spacing:.06em; opacity:.75; font-weight:500;}
+  header .title{font-size:17px; font-weight:700; margin-top:2px;}
+  header .sub{font-size:12px; font-weight:400; opacity:.85; margin-top:4px;}
+  header .link{color:#fff; opacity:.85;}
+  .wrap{max-width:520px; margin:0 auto; padding:18px 16px 40px;}
   .card{
-    background:var(--card); border:1px solid var(--border); border-radius:12px;
-    padding:18px; margin-bottom:14px;
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:20px; margin-bottom:16px; box-shadow:0 2px 10px rgba(16,42,76,.06);
   }
-  h2{font-size:16px; margin:0 0 12px;}
-  label{display:block; font-size:13px; color:var(--muted); margin:12px 0 4px;}
+  h2{font-size:16px; margin:0 0 14px; font-weight:700; color:var(--primary);}
+  label{display:block; font-size:12.5px; color:var(--muted); margin:14px 0 5px; font-weight:500;}
   input,select,textarea{
-    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
-    font-size:15px; font-family:inherit; background:#fff;
+    width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:8px;
+    font-size:15px; font-family:inherit; background:#fbfcfd; color:var(--text);
   }
+  input:focus,select:focus,textarea:focus{outline:none; border-color:var(--primary-light); background:#fff;}
   textarea{min-height:90px; resize:vertical;}
   button{
     width:100%; padding:13px; border:none; border-radius:8px; background:var(--primary);
-    color:#fff; font-size:15px; font-weight:600; margin-top:14px; cursor:pointer;
+    color:#fff; font-size:15px; font-weight:700; margin-top:16px; cursor:pointer;
+    letter-spacing:.01em; transition:background .15s;
   }
-  button.secondary{background:#fff; color:var(--primary); border:1px solid var(--primary);}
+  button:hover{background:var(--primary-light);}
+  button.secondary{background:#fff; color:var(--primary); border:1px solid var(--border);}
+  button.secondary:hover{background:#f3f5f8;}
   button.small{width:auto; padding:8px 14px; font-size:13px; margin-top:0;}
-  button:disabled{opacity:.5;}
+  button:disabled{opacity:.5; cursor:default;}
   .hidden{display:none !important;}
   .row{display:flex; gap:8px;}
   .row > *{flex:1;}
   .muted{color:var(--muted); font-size:13px;}
-  .link{color:var(--primary); text-decoration:underline; cursor:pointer; font-size:13px;}
+  .link{color:var(--primary-light); text-decoration:underline; cursor:pointer; font-size:13px;}
   table.list{width:100%; border-collapse:collapse; font-size:13px; margin-top:8px;}
-  table.list th, table.list td{border-bottom:1px solid var(--border); padding:8px 6px; text-align:left;}
+  table.list th{
+    background:#f3f5f9; color:var(--muted); font-weight:600; text-align:left;
+    padding:9px 8px; border-bottom:1px solid var(--border);
+  }
+  table.list td{border-bottom:1px solid var(--border); padding:9px 8px; text-align:left;}
+  table.list tr:last-child td{border-bottom:none;}
   .photo-grid{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
   .photo-thumb{position:relative; width:72px; height:72px;}
-  .photo-thumb img{width:100%; height:100%; object-fit:cover; border-radius:6px;}
+  .photo-thumb img{width:100%; height:100%; object-fit:cover; border-radius:6px; border:1px solid var(--border);}
   .photo-thumb .rm{
     position:absolute; top:-6px; right:-6px; background:var(--danger); color:#fff;
     width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center;
     font-size:12px; cursor:pointer;
   }
-  .status{display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;}
+  .status{display:inline-block; padding:3px 9px; border-radius:10px; font-size:11px; font-weight:700;}
   .status.sent{background:#e3f7e8; color:#1e7e34;}
   .status.pending{background:#fff4e0; color:#b06d00;}
   .status.failed{background:#fde8e8; color:var(--danger);}
   #toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-    background:#222; color:#fff; padding:10px 18px; border-radius:8px; font-size:13px;
-    display:none; z-index:999; max-width:90%; text-align:center;
+    background:#1c2430; color:#fff; padding:11px 18px; border-radius:8px; font-size:13px;
+    display:none; z-index:999; max-width:90%; text-align:center; box-shadow:0 4px 16px rgba(0,0,0,.2);
   }
-  .topbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .topbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;}
+  .notice{
+    background:#f3f5f9; border-left:3px solid var(--accent); padding:10px 12px;
+    font-size:12px; color:var(--muted); border-radius:6px; margin-top:10px; line-height:1.5;
+  }
 </style>
 </head>
 <body>
 
 <header>
   <div>
-    <div>결과물 하자 개선 요청서</div>
+    <div class="company">주식회사 이랜드이츠</div>
+    <div class="title">결과물 하자 개선 요청서</div>
     <div class="sub" id="storeBadge">매장 접속 필요</div>
   </div>
-  <div class="link" id="logoutBtn" style="color:#fff; display:none;">나가기</div>
+  <div class="link" id="logoutBtn" style="display:none;">나가기</div>
 </header>
 
 <div class="wrap">
@@ -107,6 +131,7 @@
     <button onclick="showScreen('admin-store-new')">매장코드 생성</button>
     <button class="secondary" onclick="loadStoreList(); showScreen('admin-store-list')">매장 목록</button>
     <button class="secondary" onclick="loadSubList(); showScreen('admin-sub')">수급사 관리</button>
+    <button class="secondary" onclick="loadAllHistory(); showScreen('admin-history')">전체 발송 이력</button>
   </div>
 
   <!-- ================= 매장코드 생성 ================= -->
@@ -154,6 +179,15 @@
     <label>이메일</label>
     <input id="subEmail" type="email">
     <button onclick="saveSub()">저장</button>
+  </div>
+
+  <!-- ================= 관리자: 전체 발송 이력 ================= -->
+  <div id="screen-admin-history" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">전체 발송 이력</h2><span class="link" onclick="showScreen('admin')">메뉴로</span></div>
+    <table class="list" id="adminHistoryTable">
+      <thead><tr><th>매장</th><th>수급사</th><th>수행일자</th><th>상태</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
   </div>
 
   <!-- ================= 매장 홈 (하자작성 / 이력) ================= -->
@@ -219,6 +253,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_1mLfctWo4PE4jUrwhAPSxA_lH9gebUB";
 const EDGE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/send-defect-email";
 const ADMIN_ACTION_URL = SUPABASE_URL + "/functions/v1/admin-action";
 const DOGUP_IN = "주식회사 이랜드이츠"; // 도급인 고정값
+const MAIL_SUBJECT = "[이랜드이츠] 하자개선 요청서"; // 발송 메일 제목 고정값
 
 const BRANDS = ["애슐리퀸즈","델리바이애슐리","리미니","자연별곡","피자몰","로운","프랑제리","프랜차이즈","카페"];
 
@@ -250,6 +285,9 @@ function todayStr(){
 }
 function genStoreCode(brand){
   return (brand.slice(0,2) + '-' + Math.floor(1000+Math.random()*9000)).toUpperCase();
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 /* ============================================================
@@ -375,6 +413,27 @@ async function saveSub(){
   showScreen('admin-sub');
 }
 
+/* ---- 관리자: 전체 발송 이력 ---- */
+async function loadAllHistory(){
+  const { data, error } = await sb
+    .from('submissions')
+    .select('*, stores(store_name, brand), subcontractors(company_name)')
+    .order('created_at', {ascending:false});
+  const tbody = document.querySelector('#adminHistoryTable tbody');
+  if(error){ tbody.innerHTML = `<tr><td colspan="5">조회 실패</td></tr>`; return; }
+  tbody.innerHTML = data.map(r=>{
+    const label = r.email_status==='sent' ? '발송완료' : r.email_status==='failed' ? '발송실패' : '대기중';
+    const storeLabel = r.stores ? `${r.stores.brand} (${r.stores.store_name})` : '-';
+    return `<tr>
+      <td>${storeLabel}</td>
+      <td>${r.subcontractors?.company_name || '-'}</td>
+      <td>${r.work_date}</td>
+      <td><span class="status ${r.email_status}">${label}</span></td>
+      <td>${r.document_url ? `<span class="link" onclick="downloadDoc('${r.document_url}')">문서</span>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
 /* ============================================================
    매장 화면 — 하자 작성
    ============================================================ */
@@ -433,69 +492,76 @@ function removePhoto(i){
   renderPhotoPreview();
 }
 
-/* ---- 문서(.docx) 생성 ---- */
-async function buildDocx(payload, photoFiles){
-  const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun,
-          WidthType, ImageRun, AlignmentType, VerticalAlign, ShadingType } = window.docx;
+/* ---- 문서(.pdf) 생성 ----
+   화면에 보일 양식을 화면 밖(off-screen)에 그려서 html2canvas로 캡처한 뒤
+   jsPDF로 A4 페이지에 나눠 담는다. 한글은 브라우저가 그대로 렌더링하므로
+   폰트 임베딩 없이도 깨지지 않는다. */
+async function buildPdf(payload, photoFiles){
+  const { jsPDF } = window.jspdf;
 
-  const headerCell = (text, opts={}) => new TableCell({
-    width: {size: 20, type: WidthType.PERCENTAGE},
-    shading: {type: ShadingType.CLEAR, fill: "EFEFEF"},
-    verticalAlign: VerticalAlign.CENTER,
-    children: [new Paragraph({children:[new TextRun({text, bold:true})]})],
-    ...opts
-  });
-  const valueCell = (text, opts={}) => new TableCell({
-    verticalAlign: VerticalAlign.CENTER,
-    children: [new Paragraph({children:[new TextRun({text: String(text)})]})],
-    ...opts
-  });
+  const photoImgsHtml = photoFiles.map(f =>
+    `<img src="${URL.createObjectURL(f)}" style="width:170px;height:128px;object-fit:cover;border:1px solid #dfe3ea;border-radius:4px;">`
+  );
+  const photosHtml = photoImgsHtml.length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:8px;">${photoImgsHtml.join('')}</div>`
+    : `<div style="color:#888;">(첨부 사진 없음)</div>`;
 
-  const photoParas = [];
-  for(const f of photoFiles){
-    const buf = await f.arrayBuffer();
-    photoParas.push(new Paragraph({
-      children: [new ImageRun({ data: buf, transformation: {width: 260, height: 195} })],
-      spacing: {after: 120}
-    }));
+  const th = 'background:#f0f2f6;color:#1c2430;font-weight:700;padding:12px 14px;width:26%;border:1px solid #dfe3ea;vertical-align:top;';
+  const td = 'padding:12px 14px;border:1px solid #dfe3ea;';
+
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = '760px';
+  container.style.background = '#ffffff';
+  container.style.fontFamily = "'Noto Sans KR','Malgun Gothic',sans-serif";
+  container.style.fontSize = '14px';
+  container.style.color = '#1c2430';
+
+  container.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;">
+      <tr><td colspan="2" style="background:#102a4c;color:#fff;text-align:center;font-size:21px;font-weight:700;padding:20px;letter-spacing:.02em;">결과물 하자 개선 요청서</td></tr>
+      <tr><td style="${th}">작성일자</td><td style="${td}">${escapeHtml(payload.writtenDate)}</td></tr>
+      <tr><td style="${th}">도급인</td><td style="${td}">${escapeHtml(DOGUP_IN)}</td></tr>
+      <tr><td style="${th}">수급인</td><td style="${td}">${escapeHtml(payload.companyName)}</td></tr>
+      <tr><td style="${th}">현장대리인</td><td style="${td}">${escapeHtml(payload.siteManagerName)}</td></tr>
+      <tr><td colspan="2" style="padding:12px 14px;font-size:12px;font-style:italic;color:#555;border:1px solid #dfe3ea;">※본 요청서는 귀사와 당사가 체결한 업무 도급 계약에 따른 결과물 하자 개선 요청서로, 본 요청서에 따른 업무 수행 및 결과물 개선이 이루어지지 않을 경우 제21조 등 계약상 관련 조항에 따른 조치가 진행될 수 있음을 숙지하여 주시기 바랍니다.</td></tr>
+      <tr><td style="${th}">1. 수행일자</td><td style="${td}">${escapeHtml(payload.workDate)}</td></tr>
+      <tr><td style="${th}">2. 수행장소</td><td style="${td}">${escapeHtml(payload.workLocation)}</td></tr>
+      <tr><td style="${th}">3. 수행작업</td><td style="${td}">${escapeHtml(payload.workType)}</td></tr>
+      <tr><td style="${th}">4. 하자 개선 요청사항</td><td style="${td}">${escapeHtml(payload.description).replace(/\n/g,'<br>')}</td></tr>
+      <tr><td style="${th}">5. 사진</td><td style="${td}">${photosHtml}</td></tr>
+    </table>
+  `;
+  document.body.appendChild(container);
+
+  await Promise.all(Array.from(container.querySelectorAll('img')).map(img =>
+    img.complete ? Promise.resolve() : new Promise(res=>{ img.onload=res; img.onerror=res; })
+  ));
+
+  const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff' });
+  document.body.removeChild(container);
+
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const imgWidth = pageWidth;
+  const imgHeight = canvas.height * imgWidth / canvas.width;
+  const imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+  let heightLeft = imgHeight;
+  let position = 0;
+  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+  heightLeft -= pageHeight;
+  while(heightLeft > 0){
+    position = heightLeft - imgHeight;
+    pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
   }
-  if(photoParas.length === 0){
-    photoParas.push(new Paragraph({children:[new TextRun({text:"(첨부 사진 없음)", color:"888888"})]}));
-  }
 
-  const table = new Table({
-    width: {size: 100, type: WidthType.PERCENTAGE},
-    rows: [
-      new TableRow({children: [ new TableCell({
-        columnSpan: 2,
-        shading: {type: ShadingType.CLEAR, fill: "1A3C6E"},
-        children: [new Paragraph({alignment: AlignmentType.CENTER, children:[new TextRun({text:"결과물 하자 개선 요청서", bold:true, color:"FFFFFF", size:32})]})]
-      })]}),
-      new TableRow({children: [headerCell('작성일자'), valueCell(payload.writtenDate)]}),
-      new TableRow({children: [headerCell('도급인'), valueCell(DOGUP_IN)]}),
-      new TableRow({children: [headerCell('수급인'), valueCell(payload.companyName)]}),
-      new TableRow({children: [headerCell('현장대리인'), valueCell(payload.siteManagerName)]}),
-      new TableRow({children: [ new TableCell({
-        columnSpan: 2,
-        children: [new Paragraph({children:[new TextRun({
-          text:"※본 요청서는 귀사와 당사가 체결한 업무 도급 계약에 따른 결과물 하자 개선 요청서로, 본 요청서에 따른 업무 수행 및 결과물 개선이 이루어지지 않을 경우 제21조 등 계약상 관련 조항에 따른 조치가 진행될 수 있음을 숙지하여 주시기 바랍니다.",
-          size:18, italics:true})]})]
-      })]}),
-      new TableRow({children: [headerCell('1. 수행일자'), valueCell(payload.workDate)]}),
-      new TableRow({children: [headerCell('2. 수행장소'), valueCell(payload.workLocation)]}),
-      new TableRow({children: [headerCell('3. 수행작업'), valueCell(payload.workType)]}),
-      new TableRow({children: [headerCell('4. 하자 개선 요청사항'), valueCell(payload.description)]}),
-      new TableRow({children: [
-        new TableCell({verticalAlign: VerticalAlign.TOP, children:[new Paragraph({children:[new TextRun({text:'5. 사진', bold:true})]})]}),
-        new TableCell({children: photoParas})
-      ]}),
-    ]
-  });
-
-  const doc = new Document({
-    sections: [{ children: [table] }]
-  });
-  return await Packer.toBlob(doc);
+  return pdf.output('blob');
 }
 
 /* ---- 제출: 문서 생성 → Storage 업로드 → DB 기록 → 메일 발송 요청 ---- */
@@ -515,8 +581,8 @@ async function submitReport(){
   btn.disabled = true; statusEl.textContent = '문서 생성 중...';
 
   try{
-    // 1) docx 생성
-    const blob = await buildDocx({
+    // 1) PDF 생성
+    const blob = await buildPdf({
       writtenDate: todayStr(),
       companyName, siteManagerName,
       workDate, workLocation: `${currentStore.brand} (${currentStore.store_name})`,
@@ -526,8 +592,8 @@ async function submitReport(){
     // 2) Storage 업로드 (문서 + 사진)
     statusEl.textContent = '업로드 중...';
     const stamp = Date.now();
-    const docPath = `${currentStore.store_code}/${stamp}_요청서.docx`;
-    const { error: docErr } = await sb.storage.from('defect-reports').upload(docPath, blob);
+    const docPath = `${currentStore.store_code}/${stamp}_요청서.pdf`;
+    const { error: docErr } = await sb.storage.from('defect-reports').upload(docPath, blob, { contentType: 'application/pdf' });
     if(docErr) throw new Error('문서 업로드 실패: ' + docErr.message);
 
     const photoPaths = [];
@@ -552,7 +618,7 @@ async function submitReport(){
     }).select().single();
     if(insErr) throw new Error('이력 저장 실패: ' + insErr.message);
 
-    // 4) 메일 발송 요청 (Edge Function) — IT 설정 전에는 실패할 수 있음
+    // 4) 메일 발송 요청 (Edge Function)
     statusEl.textContent = '메일 발송 요청 중...';
     try{
       const res = await fetch(EDGE_FUNCTION_URL, {
@@ -562,7 +628,7 @@ async function submitReport(){
           submission_id: sub.id,
           to: subEmail,
           reply_to: currentStore.manager_email,
-          subject: `[${currentStore.brand}] 결과물 하자 개선 요청서 - ${currentStore.store_name}`,
+          subject: MAIL_SUBJECT,
           document_path: docPath
         })
       });
@@ -571,7 +637,7 @@ async function submitReport(){
       toast('요청서 생성 및 메일 발송 완료');
     }catch(mailErr){
       await sb.from('submissions').update({email_status:'failed', email_error: String(mailErr)}).eq('id', sub.id);
-      toast('문서는 저장됐지만 메일 발송은 실패했어 (IT 설정 확인 필요)');
+      toast('문서는 저장됐지만 메일 발송은 실패했어 (메일 설정 확인 필요)');
     }
 
     showScreen('store-home');
