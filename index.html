@@ -28,7 +28,7 @@
     display:flex; align-items:flex-start; justify-content:space-between;
   }
   header .company{font-size:11px; letter-spacing:.06em; opacity:.75; font-weight:500;}
-  header .title{font-size:17px; font-weight:700; margin-top:2px;}
+  header .title{font-size:17px; font-weight:700; margin-top:2px; cursor:pointer;}
   header .sub{font-size:12px; font-weight:400; opacity:.85; margin-top:4px;}
   header .link{color:#fff; opacity:.85;}
   .wrap{max-width:520px; margin:0 auto; padding:18px 16px 40px;}
@@ -95,7 +95,7 @@
 <header>
   <div>
     <div class="company">주식회사 이랜드이츠</div>
-    <div class="title">결과물 하자 개선 요청서</div>
+    <div class="title" onclick="goHome()">결과물 하자 개선 요청서</div>
     <div class="sub" id="storeBadge">매장 접속 필요</div>
   </div>
   <div class="link" id="logoutBtn" style="display:none;">나가기</div>
@@ -208,7 +208,8 @@
     <div id="subEditBox" class="hidden" style="margin-top:8px;">
       <label>수급인 회사명</label><input id="editCompanyName">
       <label>현장대리인명</label><input id="editManagerName">
-      <label>수신 이메일</label><input id="editEmail" type="email">
+      <label>수신 이메일</label><input id="editEmail" type="email" readonly>
+      <div class="muted">수신 이메일 변경은 관리자 화면 &gt; 수급사 관리에서 가능</div>
     </div>
 
     <label>수행일자</label>
@@ -253,7 +254,6 @@ const SUPABASE_ANON_KEY = "sb_publishable_1mLfctWo4PE4jUrwhAPSxA_lH9gebUB";
 const EDGE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/send-defect-email";
 const ADMIN_ACTION_URL = SUPABASE_URL + "/functions/v1/admin-action";
 const DOGUP_IN = "주식회사 이랜드이츠"; // 도급인 고정값
-const MAIL_SUBJECT = "[이랜드이츠] 하자개선 요청서"; // 발송 메일 제목 고정값
 
 const BRANDS = ["애슐리퀸즈","델리바이애슐리","리미니","자연별곡","피자몰","로운","프랑제리","프랜차이즈","카페"];
 
@@ -304,12 +304,14 @@ async function enterStore(){
   await loadSubcontractorsCache();
   showScreen('store-home');
 }
-document.getElementById('logoutBtn').addEventListener('click', ()=>{
+function goHome(){
   currentStore = null;
+  adminPassword = null;
   document.getElementById('storeBadge').textContent = '매장 접속 필요';
   document.getElementById('logoutBtn').style.display='none';
   showScreen('entry');
-});
+}
+document.getElementById('logoutBtn').addEventListener('click', goHome);
 
 /* ============================================================
    관리자
@@ -574,7 +576,6 @@ async function submitReport(){
 
   const companyName = document.getElementById('editCompanyName').value.trim();
   const siteManagerName = document.getElementById('editManagerName').value.trim();
-  const subEmail = document.getElementById('editEmail').value.trim();
 
   const btn = document.getElementById('submitBtn');
   const statusEl = document.getElementById('submitStatus');
@@ -624,19 +625,12 @@ async function submitReport(){
       const res = await fetch(EDGE_FUNCTION_URL, {
         method: 'POST',
         headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY},
-        body: JSON.stringify({
-          submission_id: sub.id,
-          to: subEmail,
-          reply_to: currentStore.manager_email,
-          subject: MAIL_SUBJECT,
-          document_path: docPath
-        })
+        // 수신자·Reply-To·제목·첨부는 서버가 DB 기준으로 결정, 발송 상태도 서버가 기록
+        body: JSON.stringify({ submission_id: sub.id })
       });
       if(!res.ok) throw new Error(await res.text());
-      await sb.from('submissions').update({email_status:'sent'}).eq('id', sub.id);
       toast('요청서 생성 및 메일 발송 완료');
     }catch(mailErr){
-      await sb.from('submissions').update({email_status:'failed', email_error: String(mailErr)}).eq('id', sub.id);
       toast('문서는 저장됐지만 메일 발송은 실패했어 (메일 설정 확인 필요)');
     }
 

@@ -81,3 +81,10 @@ drop policy if exists "stores_insert" on stores;
 drop policy if exists "subcontractors_all" on subcontractors;
 
 create policy "subcontractors_select" on subcontractors for select using (true);
+
+-- ============================================================
+-- [보안 패치 2] 메일 발송 상태는 send-defect-email Edge Function(service role)만 변경
+-- anon key로 email_status를 'pending'으로 되돌려 재발송시키는 것 차단.
+-- 이미 위 schema를 실행한 상태라면 이 블록만 SQL Editor에서 추가 실행.
+-- ============================================================
+drop policy if exists "submissions_update" on submissions;
