@@ -68,7 +68,7 @@ const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                  // 1번에서 복사
    npx supabase functions deploy admin-action
    ```
 3. Supabase 대시보드 **Edge Functions > admin-action > Secrets** 에서 등록:
-   - `ADMIN_PASSWORD` — 관리자 비밀번호 (예전 `2496`을 그대로 쓰거나 새 값으로 변경)
+   - `ADMIN_PASSWORD` — 마스터 관리자 비밀번호 (12자 이상, 영문·숫자·특수문자 조합 권장)
 4. 배포 후 관리자 화면 로그인/전체 매장 목록/전체 발송 이력/수급사 등록·수정이 모두 이 비밀번호로 서버에서 검증됨
 
 ## 4-2. 매장코드 셀프 생성 + 발송 이력 엑셀 다운로드 (업데이트)
@@ -99,7 +99,33 @@ const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                  // 1번에서 복사
 2. `admin-action` Edge Function을 최신 코드로 재배포
 3. GitHub에 `index.html`, `manifest.webmanifest`, `sw.js`, `icons/` 폴더 반영
 
+## 5. 보안 구조 및 운영 수칙 (전사 배포 전 필수)
+
+### 구조
+- **브라우저 → DB/Storage 직접 접근 없음**: anon key(공개 키)로는 어떤 테이블·파일도 조회/저장 불가 (RLS·Storage 정책 전면 차단)
+- **매장**: 매 요청마다 서버(admin-action)가 매장코드를 검증. 자기 매장 이력·문서만 조회 가능
+- **파일 업로드**: 서버가 해당 매장 폴더용 1회용 업로드 주소를 발급. 파일은 PDF/JPEG, 10MB 이하만 허용
+- **문서 열람**: 서버가 권한 확인 후 60초짜리 임시 주소 발급
+- **무차별 대입 방지**: 매장코드·관리자 로그인 실패가 IP당 15분 10회를 넘으면 15분 차단
+- **호출 허용 사이트 제한(CORS)**: `https://gabeenya.github.io`만 허용 (다른 주소로 서비스하면 Secrets `ALLOWED_ORIGINS`에 추가)
+- **화면 보안**: 외부 스크립트 버전 고정 + 위변조 검증(SRI), 콘텐츠 보안 정책(CSP), 30분 미사용 시 자동 로그아웃
+- **개인정보 최소화**: 사진은 업로드 전 다시 저장해 촬영 위치(GPS) 등 메타데이터 제거
+
+### 배포 순서 (보안 패치 5)
+1. Supabase Secrets의 `ADMIN_PASSWORD`를 새 강력한 비밀번호로 변경 (이전 비밀번호는 공개 저장소 기록에 남아 있음)
+2. SQL Editor에서 "[보안 패치 5-A]" 블록 실행
+3. `admin-action`, `send-defect-email` 재배포
+4. `index.html` 반영 (GitHub 푸시)
+5. SQL Editor에서 "[보안 패치 5-B]" 블록 실행
+
+### 운영 수칙
+- GitHub·Supabase·발신 메일(네이버) 계정 모두 2단계 인증 사용, 접근 권한자 최소화
+- 저장소는 공개 상태이므로 비밀번호·키 등 비밀값은 절대 코드/README에 쓰지 말고 Supabase Secrets에만 등록
+- 매장코드는 매장 접속 비밀번호 역할 — 외부 공유 금지, 유출 의심 시 마스터가 관리자 화면에서 코드 변경
+- 퇴사·이동한 관리자 계정은 즉시 삭제, 매장 담당자 변경 시 매장 정보 수정
+- 개인정보(담당자명·이메일, 현장대리인 정보, 사진)의 보관 기간과 파기 절차는 사내 개인정보 담당 부서와 협의해 정할 것
+
 ## 참고
 - 사진은 최대 5장, 문서(.pdf) 내부에 자동 삽입됨 (화면에 보이는 양식 그대로 캡처해 PDF로 변환하는 방식 — 한글 폰트 문제 없음)
 - 관리자 화면 **전체 발송 이력**에서 모든 매장의 제출 건과 문서를 조회/다운로드 가능
-- `stores` 테이블은 보안 패치 3 이후 anon key로 조회 불가 (매장 접속은 코드가 정확히 일치하는 1건만 Edge Function이 반환). `submissions` 테이블의 select/insert는 여전히 anon key로 열려있음 (하자 제출·매장별 이력 조회는 로그인 없는 내부망 전용 도구 특성상 의도된 동작). 더 강한 접근 통제(매장별 계정 로그인 등)가 필요하면 알려줘, Supabase Auth로 교체 가능
+- 보안 패치 5 이후 브라우저(anon key)는 DB·Storage에 직접 접근할 수 없음. 모든 데이터 접근은 Edge Function이 매장코드/관리자 계정을 검증한 뒤 수행 (아래 5번 참고)

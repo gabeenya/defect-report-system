@@ -6,6 +6,8 @@
 <title>결과물 하자 개선 요청서 시스템 | 이랜드이츠</title>
 <meta name="description" content="주식회사 이랜드이츠 결과물 하자 개선 요청서 작성·발송 시스템">
 <meta name="theme-color" content="#102a4c">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://okujibesekhagmcpwqxt.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <!-- 모바일 홈 화면 앱(PWA) 설정 -->
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -17,10 +19,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- 외부 라이브러리: 버전 고정 + integrity(SRI)로 CDN 파일이 바뀌면 실행 차단 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
 <style>
   :root{
     --primary:#102a4c; --primary-light:#1d3f6e; --accent:#b08d3f;
@@ -201,8 +204,9 @@
     <input id="newManagerName">
     <label>매장 담당자 이메일</label>
     <input id="newManagerEmail" type="email">
-    <label>매장코드 (영문/숫자/하이픈 3~20자, 미입력시 자동생성)</label>
+    <label>매장코드 (영문/숫자/하이픈 5~20자, 미입력시 자동생성)</label>
     <input id="newStoreCode" placeholder="예: AL000" autocomplete="off" autocapitalize="characters">
+    <div class="notice">[개인정보 수집·이용 안내] 수집 항목: 매장 담당자명, 이메일 / 이용 목적: 하자개선 요청서 발송 및 수급사 회신 수신 / 담당자 변경 또는 삭제가 필요하면 관리자에게 요청해 주십시오.</div>
     <button id="createStoreBtn" onclick="createStore()">발급</button>
     <div class="notice">매장코드는 매장 접속용 비밀번호로 사용되므로 매장 내부에서만 공유해 주시기 바랍니다. 매장코드를 분실하신 경우 관리자에게 문의해 주십시오.</div>
   </div>
@@ -397,7 +401,9 @@ const DOGUP_IN = "주식회사 이랜드이츠"; // 도급인 고정값
 
 const BRANDS = ["애슐리퀸즈","델리바이애슐리","리미니","자연별곡","피자몰","로운","프랑제리","프랜차이즈","카페"];
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// 브라우저는 DB·Storage를 직접 조회할 권한이 없음 (RLS 전면 차단). 이 클라이언트는
+// 서버가 발급한 1회용 업로드 주소로 파일을 올리는 용도로만 사용
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 /* ============================================================
    상태
@@ -437,6 +443,11 @@ function formatDateTime(iso){
 function statusLabel(s){
   return s==='sent' ? '발송완료' : s==='failed' ? '발송실패' : s==='sending' ? '발송중' : '대기중';
 }
+// 상태값은 정해진 것만 class로 사용 (DB 값이 그대로 HTML에 들어가지 않도록)
+function statusBadge(s){
+  const cls = ['sent','failed','sending','pending'].includes(s) ? s : 'pending';
+  return `<span class="status ${cls}">${statusLabel(s)}</span>`;
+}
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -448,21 +459,42 @@ async function enterStore(){
   const code = document.getElementById('entryCode').value.trim();
   if(!code){ toast('매장코드를 입력해 주십시오.'); return; }
   try{
-    const { store } = await callPublicAction('lookup_store', { store_code: code });
-    await openStore(store);
+    const { store, subcontractors: subs } = await callPublicAction('lookup_store', { store_code: code });
+    openStore(store, subs);
   }catch(e){
     toast(e.message || '존재하지 않는 매장코드입니다.');
   }
 }
-async function openStore(store){
+function openStore(store, subs){
   currentStore = store;
+  subcontractors = subs || [];
   document.getElementById('storeBadge').textContent = `${store.brand} · ${store.store_name}`;
   document.getElementById('logoutBtn').style.display='block';
-  await loadSubcontractorsCache();
+  touchSession();
   showScreen('store-home');
 }
+// 매장 action 호출: 매 요청마다 서버가 매장코드를 다시 검증
+function callStoreAction(action, payload){
+  return callPublicAction(action, { ...payload, store_code: currentStore.store_code });
+}
+
+/* ---- 자동 로그아웃: 30분 동안 조작이 없으면 매장/관리자 접속 해제 (공용 기기 대비) ---- */
+const IDLE_LIMIT_MS = 30 * 60 * 1000;
+let lastActivity = Date.now();
+function touchSession(){ lastActivity = Date.now(); }
+['click','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, touchSession, {passive:true}));
+setInterval(()=>{
+  if((currentStore || adminAuth) && Date.now() - lastActivity > IDLE_LIMIT_MS){
+    goHome();
+    toast('장시간 사용하지 않아 자동으로 로그아웃되었습니다.');
+  }
+}, 60 * 1000);
+
 function goHome(){
   currentStore = null;
+  subcontractors = [];
+  adminStores = [];
+  adminSubmissions = [];
   adminAuth = null;
   adminInfo = null;
   document.body.classList.remove('is-master');
@@ -586,7 +618,7 @@ async function createStore(){
   const manager_email = document.getElementById('newManagerEmail').value.trim();
   const store_code = document.getElementById('newStoreCode').value.trim().toUpperCase();
   if(!store_name || !manager_name || !manager_email){ toast('필수 항목을 모두 입력해 주십시오.'); return; }
-  if(store_code && !/^[A-Z0-9-]{3,20}$/.test(store_code)){ toast('매장코드는 영문, 숫자, 하이픈(-) 조합 3~20자로 입력해 주십시오.'); return; }
+  if(store_code && !/^[A-Z0-9-]{5,20}$/.test(store_code)){ toast('매장코드는 영문, 숫자, 하이픈(-) 조합 5~20자로 입력해 주십시오.'); return; }
 
   const btn = document.getElementById('createStoreBtn');
   btn.disabled = true;
@@ -606,7 +638,7 @@ async function createStore(){
 async function enterRegisteredStore(){
   if(!registeredStore) return;
   document.getElementById('entryCode').value = registeredStore.store_code;
-  await openStore(registeredStore);
+  await enterStore(); // 일반 접속과 동일하게 서버에서 매장·수급사 정보를 받아 접속
 }
 
 async function loadStoreList(){
@@ -664,11 +696,12 @@ async function saveStore(){
 
 /* ---- 수급사 관리 ---- */
 async function loadSubList(){
-  const { data, error } = await sb.from('subcontractors').select('*').order('company_name');
   const tbody = document.querySelector('#subListTable tbody');
-  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회에 실패했습니다.</td></tr>`; return; }
-  subcontractors = data;
-  tbody.innerHTML = data.map(s=>`
+  try{
+    await loadSubcontractorsCache();
+  }catch(e){ tbody.innerHTML = `<tr><td colspan="4">조회에 실패했습니다.</td></tr>`; return; }
+  if(!subcontractors.length){ tbody.innerHTML = `<tr><td colspan="4">등록된 수급사가 없습니다.</td></tr>`; return; }
+  tbody.innerHTML = subcontractors.map(s=>`
     <tr>
       <td>${escapeHtml(s.company_name)}</td><td>${escapeHtml(s.site_manager_name)}</td><td>${escapeHtml(s.email)}</td>
       <td class="master-only"><span class="link" onclick="openSubForm(subcontractors.find(x=>x.id==='${s.id}'))">수정</span></td>
@@ -766,8 +799,8 @@ function renderAllHistory(){
       <td>${escapeHtml(storeLabel)}</td>
       <td>${escapeHtml(r.subcontractors?.company_name || '-')}</td>
       <td>${r.work_date}</td>
-      <td><span class="status ${r.email_status}">${statusLabel(r.email_status)}</span></td>
-      <td>${r.document_url ? `<span class="link" onclick="downloadDoc('${r.document_url}')">문서</span>` : ''}</td>
+      <td>${statusBadge(r.email_status)}</td>
+      <td>${r.document_url ? `<span class="link" onclick="downloadDoc('${r.id}', 'admin')">문서</span>` : ''}</td>
       <td class="master-only">${r.email_status==='sending' ? '' : `<span class="link" onclick="openSubmissionForm('${r.id}')">수정</span>`}</td>
     </tr>`;
   }).join('');
@@ -863,14 +896,14 @@ async function downloadHistoryExcel(){
 /* ============================================================
    매장 화면 — 하자 작성
    ============================================================ */
+// 관리자 화면용 수급사 목록 (매장 화면은 접속 시 서버가 함께 내려줌)
 async function loadSubcontractorsCache(){
-  const { data } = await sb.from('subcontractors').select('*').order('company_name');
-  subcontractors = data || [];
+  ({ subcontractors } = await callAdminAction('list_subcontractors'));
 }
 
 function openReportForm(){
   const sel = document.getElementById('reportSub');
-  sel.innerHTML = subcontractors.map(s=>`<option value="${s.id}">${s.company_name}</option>`).join('');
+  sel.innerHTML = subcontractors.map(s=>`<option value="${s.id}">${escapeHtml(s.company_name)}</option>`).join('');
   document.getElementById('reportWorkDate').value = todayStr();
   document.getElementById('reportLocation').value = `${currentStore.brand} (${currentStore.store_name})`;
   document.getElementById('reportWorkType').value = '';
@@ -896,13 +929,42 @@ function toggleSubEdit(){
   document.getElementById('subEditBox').classList.toggle('hidden');
 }
 
-document.querySelectorAll('.photo-input').forEach(input=>input.addEventListener('change', (e)=>{
+// 사진을 다시 그려 JPEG로 저장: 촬영 위치(GPS)·기기 정보 등 EXIF 메타데이터 제거 + 용량 축소
+async function sanitizePhoto(file){
+  const MAX = 1600;
+  let bitmap;
+  try{
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  }catch(e){
+    bitmap = await new Promise((resolve, reject)=>{
+      const img = new Image();
+      img.onload = ()=>resolve(img); img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise(res=>canvas.toBlob(res, 'image/jpeg', 0.85));
+  return new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+}
+
+document.querySelectorAll('.photo-input').forEach(input=>input.addEventListener('change', async (e)=>{
   const picked = Array.from(e.target.files);
+  e.target.value = '';
   const files = picked.slice(0, 5 - selectedPhotos.length);
   if(picked.length > files.length) toast('사진은 최대 5장까지 첨부할 수 있습니다.');
-  selectedPhotos = selectedPhotos.concat(files).slice(0,5);
+  for(const f of files){
+    try{
+      selectedPhotos.push(await sanitizePhoto(f));
+    }catch(err){
+      toast('사진을 불러오지 못했습니다. 다른 사진을 선택해 주십시오.');
+    }
+  }
+  selectedPhotos = selectedPhotos.slice(0,5);
   renderPhotoPreview();
-  e.target.value = '';
 }));
 function renderPhotoPreview(){
   const box = document.getElementById('photoPreview');
@@ -1017,34 +1079,31 @@ async function submitReport(){
     }, selectedPhotos);
 
     // 2) Storage 업로드 (문서 + 사진)
+    //    브라우저는 Storage에 직접 쓸 권한이 없음 → 서버가 이 매장 폴더용 1회용 업로드 주소를 발급
     statusEl.textContent = '업로드 중...';
-    // Storage 경로에는 한글 등 비ASCII 문자가 허용되지 않음 (Invalid key) → 매장 id(uuid) 폴더 + 영문 파일명 사용
-    const stamp = Date.now();
-    const docPath = `${currentStore.id}/${stamp}_report.pdf`;
-    const { error: docErr } = await sb.storage.from('defect-reports').upload(docPath, blob, { contentType: 'application/pdf' });
-    if(docErr) throw new Error('문서 업로드 실패: ' + docErr.message);
+    const { document: docUpload, photos: photoUploads } =
+      await callStoreAction('store_upload_urls', { photo_count: selectedPhotos.length });
+    const bucket = sb.storage.from('defect-reports');
+    const { error: docErr } = await bucket.uploadToSignedUrl(docUpload.path, docUpload.token, blob, { contentType: 'application/pdf' });
+    if(docErr) throw new Error('문서 업로드에 실패했습니다. 다시 시도해 주십시오.');
 
     const photoPaths = [];
-    for(let i=0;i<selectedPhotos.length;i++){
-      const p = `${currentStore.id}/${stamp}_photo${i+1}.jpg`;
-      const { error: pErr } = await sb.storage.from('defect-reports').upload(p, selectedPhotos[i]);
-      if(!pErr) photoPaths.push(p);
+    for(let i=0;i<photoUploads.length;i++){
+      const { error: pErr } = await bucket.uploadToSignedUrl(photoUploads[i].path, photoUploads[i].token, selectedPhotos[i], { contentType: 'image/jpeg' });
+      if(!pErr) photoPaths.push(photoUploads[i].path);
     }
 
-    // 3) DB 기록
+    // 3) DB 기록 (서버가 매장코드·경로·수급사를 검증한 뒤 저장)
     statusEl.textContent = '이력 저장 중...';
-    const { data: sub, error: insErr } = await sb.from('submissions').insert({
-      store_id: currentStore.id,
+    const { submission_id } = await callStoreAction('store_submit', {
       subcontractor_id: subId,
       work_date: workDate,
-      work_location: `${currentStore.brand} (${currentStore.store_name})`,
       work_type: workType,
       defect_description: description,
-      photo_urls: photoPaths,
-      document_url: docPath,
-      email_status: 'pending'
-    }).select().single();
-    if(insErr) throw new Error('이력 저장 실패: ' + insErr.message);
+      document_path: docUpload.path,
+      photo_paths: photoPaths,
+    });
+    const sub = { id: submission_id };
 
     // 4) 메일 발송 요청 (Edge Function)
     statusEl.textContent = '메일 발송 요청 중...';
@@ -1073,21 +1132,20 @@ async function submitReport(){
    발송 이력
    ============================================================ */
 async function loadHistory(){
-  const { data, error } = await sb
-    .from('submissions')
-    .select('*, subcontractors(company_name)')
-    .eq('store_id', currentStore.id)
-    .order('created_at', {ascending:false});
   const tbody = document.querySelector('#historyTable tbody');
-  if(error){ tbody.innerHTML = `<tr><td colspan="5">조회에 실패했습니다.</td></tr>`; return; }
-  if(!data.length){ tbody.innerHTML = `<tr><td colspan="5">발송 이력이 없습니다.</td></tr>`; return; }
-  tbody.innerHTML = data.map(r=>{
+  tbody.innerHTML = `<tr><td colspan="5">불러오는 중입니다...</td></tr>`;
+  let history;
+  try{
+    ({ history } = await callStoreAction('store_history'));
+  }catch(e){ tbody.innerHTML = `<tr><td colspan="5">조회에 실패했습니다.</td></tr>`; return; }
+  if(!history.length){ tbody.innerHTML = `<tr><td colspan="5">발송 이력이 없습니다.</td></tr>`; return; }
+  tbody.innerHTML = history.map(r=>{
     return `<tr>
-      <td>${r.work_date}</td>
+      <td>${escapeHtml(r.work_date)}</td>
       <td>${escapeHtml(r.subcontractors?.company_name || '-')}</td>
       <td>${escapeHtml(r.work_type || '')}</td>
-      <td><span class="status ${r.email_status}">${statusLabel(r.email_status)}</span></td>
-      <td>${r.document_url ? `<span class="link" onclick="downloadDoc('${r.document_url}')">문서</span>` : ''}</td>
+      <td>${statusBadge(r.email_status)}</td>
+      <td>${r.has_document ? `<span class="link" onclick="downloadDoc('${r.id}', 'store')">문서</span>` : ''}</td>
     </tr>`;
   }).join('');
 }
@@ -1133,10 +1191,19 @@ if('serviceWorker' in navigator){
 }
 updateInstallCard('entry');
 
-async function downloadDoc(path){
-  const { data, error } = await sb.storage.from('defect-reports').createSignedUrl(path, 60);
-  if(error){ toast('문서 다운로드 링크 생성에 실패했습니다.'); return; }
-  window.open(data.signedUrl, '_blank');
+// 문서 열람: 서버가 권한 확인 후 60초짜리 임시 주소 발급 (매장은 자기 매장 문서만)
+async function downloadDoc(submissionId, mode){
+  // 비동기 처리 후 window.open을 하면 모바일에서 팝업이 차단되므로 창을 먼저 연다
+  const win = window.open('', '_blank');
+  try{
+    const { url } = mode === 'admin'
+      ? await callAdminAction('admin_doc_url', { submission_id: submissionId })
+      : await callStoreAction('store_doc_url', { submission_id: submissionId });
+    if(win) win.location.href = url; else window.location.href = url;
+  }catch(e){
+    if(win) win.close();
+    toast('문서를 열 수 없습니다. ' + e.message);
+  }
 }
 </script>
 </body>

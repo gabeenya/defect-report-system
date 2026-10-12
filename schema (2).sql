@@ -116,3 +116,47 @@ create table if not exists admins (
   created_at timestamptz not null default now()
 );
 alter table admins enable row level security;
+
+-- ============================================================
+-- [보안 패치 5-A] 로그인 실패 기록 테이블 (무차별 대입 방지용) — 언제 실행해도 안전
+-- admin-action이 매장코드/관리자 로그인 실패를 IP별로 기록하고, 15분 10회 초과 시 차단.
+-- ============================================================
+create table if not exists auth_failures (
+  id bigserial primary key,
+  key text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists auth_failures_key_time on auth_failures (key, created_at);
+alter table auth_failures enable row level security;
+
+-- ============================================================
+-- [보안 패치 5-B] 브라우저(anon key)의 DB·Storage 직접 접근 전면 차단
+-- 이후 모든 조회·저장·파일 업로드/다운로드는 admin-action Edge Function이
+-- 매장코드 또는 관리자 계정을 검증한 뒤에만 수행 (service role).
+-- ※ 반드시 admin-action·send-defect-email 재배포 + 새 index.html 반영 후 실행할 것
+--   (먼저 실행하면 기존 화면에서 하자 제출/이력 조회가 안 됨)
+-- ============================================================
+drop policy if exists "stores_select" on stores;
+drop policy if exists "stores_insert" on stores;
+drop policy if exists "subcontractors_select" on subcontractors;
+drop policy if exists "subcontractors_all" on subcontractors;
+drop policy if exists "submissions_select" on submissions;
+drop policy if exists "submissions_insert" on submissions;
+drop policy if exists "submissions_update" on submissions;
+drop policy if exists "defect-reports_insert" on storage.objects;
+drop policy if exists "defect-reports_select" on storage.objects;
+
+alter table stores enable row level security;
+alter table subcontractors enable row level security;
+alter table submissions enable row level security;
+alter table admins enable row level security;
+
+-- 버킷: 비공개 유지 + 파일 크기 10MB 제한 + PDF/JPEG만 허용
+update storage.buckets
+   set public = false,
+       file_size_limit = 10485760,
+       allowed_mime_types = array['application/pdf', 'image/jpeg']
+ where id = 'defect-reports';
+
+-- 확인용: 아래 조회 결과에 public 스키마 정책이 하나도 없고, storage에도 defect-reports 관련 정책이 없어야 정상
+-- select schemaname, tablename, policyname from pg_policies where schemaname in ('public', 'storage');

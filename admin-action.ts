@@ -2,11 +2,19 @@
 // 역할: 매장코드 생성/조회와 관리자 기능을 service role 권한으로 수행한다.
 //       (anon key로는 stores/admins 테이블 조회·쓰기, subcontractors 쓰기 불가 — RLS로 차단됨)
 //
+// 보안 원칙: 브라우저(anon key)는 DB·Storage에 직접 접근하지 못함 (RLS/Storage 정책 전면 차단).
+//            모든 조회·저장은 이 함수가 매장코드 또는 관리자 계정을 검증한 뒤 service role로 수행.
+//
 //   - 공개 action (로그인 불필요):
 //       register_store : 매장 사용자가 직접 매장코드 생성
-//       lookup_store   : 매장코드로 접속 (대소문자 구분 없이 일치하는 매장 1건만 반환)
+//   - 매장 action (매장코드 검증, payload.store_code):
+//       lookup_store   : 매장코드로 접속 (매장 정보 + 수급사 목록 반환)
+//       store_history  : 이 매장의 발송 이력
+//       store_upload_urls : 요청서·사진 업로드용 1회용 서명 URL 발급 (이 매장 폴더로만)
+//       store_submit   : 발송 이력 저장 (업로드 경로가 이 매장 폴더인지 검증)
+//       store_doc_url  : 이 매장 요청서 PDF 열람용 60초 서명 URL
 //   - 관리자 action (마스터 + 일반 관리자, 조회 전용):
-//       verify, list_stores, list_submissions
+//       verify, list_stores, list_submissions, list_subcontractors, admin_doc_url
 //   - 마스터 전용 action (수정 권한):
 //       update_store, save_subcontractor, update_submission,
 //       list_admins, create_admin, delete_admin
@@ -18,7 +26,10 @@
 // 필요 환경변수 (Supabase 대시보드 > Edge Functions > Secrets 에서 등록):
 //   ADMIN_PASSWORD   - 마스터 관리자 비밀번호 (index.html에는 존재하지 않음)
 //   ADMIN_ID         - (선택) 마스터 관리자 아이디. 비워두면 "master"
+//   ALLOWED_ORIGINS  - (선택) 호출을 허용할 사이트 주소(쉼표 구분). 비워두면 https://gabeenya.github.io
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY - Supabase가 자동 주입
+//
+// 무차별 대입 방지: 매장코드/관리자 로그인 실패가 IP당 15분에 10회를 넘으면 15분간 차단 (auth_failures 테이블)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -32,17 +43,21 @@ const supabaseAdmin = createClient(
 
 // index.html의 BRANDS와 동일하게 유지
 const BRANDS = ["애슐리퀸즈","델리바이애슐리","리미니","자연별곡","피자몰","로운","프랑제리","프랜차이즈","카페"];
-const STORE_CODE_RE = /^[A-Z0-9-]{3,20}$/;
+const STORE_CODE_RE = /^[A-Z0-9-]{5,20}$/;
+const STORE_CODE_RULE = "매장코드는 영문, 숫자, 하이픈(-) 조합 5~20자로 입력해 주십시오.";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOGIN_ID_RE = /^[a-zA-Z0-9._-]{3,30}$/;
 const EDITABLE_STATUS = ["sent", "failed"]; // 'pending'으로 되돌리면 재발송 대상이 되므로 제외
+const BUCKET = "defect-reports";
+const MAX_PHOTOS = 5;
 
-// 브라우저(GitHub Pages)에서 호출하므로 CORS 허용 헤더 필수.
-// 없으면 브라우저가 preflight(OPTIONS)에서 요청을 막아버림.
+// CORS: 허용한 사이트에서만 브라우저 호출 허용 (Access-Control-Allow-Origin은 요청마다 붙임)
+const ALLOWED_ORIGINS = ((Deno.env.get("ALLOWED_ORIGINS") ?? "").trim() || "https://gabeenya.github.io")
+  .split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean);
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+  "Vary": "Origin",
 };
 
 function json(body: unknown) {
@@ -53,6 +68,28 @@ function json(body: unknown) {
 function text(body: string, status: number) {
   return new Response(body, { status, headers: corsHeaders });
 }
+
+/* ---------------- 무차별 대입(brute force) 방지 ---------------- */
+const FAIL_WINDOW_MIN = 15;
+const FAIL_LIMIT = 10;
+
+function clientIp(req: Request) {
+  return (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+}
+async function isLocked(key: string) {
+  const since = new Date(Date.now() - FAIL_WINDOW_MIN * 60_000).toISOString();
+  const { count } = await supabaseAdmin
+    .from("auth_failures").select("id", { count: "exact", head: true })
+    .eq("key", key).gte("created_at", since);
+  return (count ?? 0) >= FAIL_LIMIT;
+}
+async function recordFailure(key: string) {
+  await supabaseAdmin.from("auth_failures").insert({ key });
+  // 오래된 기록 정리 (하루 지난 것)
+  await supabaseAdmin.from("auth_failures").delete()
+    .lt("created_at", new Date(Date.now() - 86_400_000).toISOString());
+}
+const LOCKED_MSG = `로그인 시도가 너무 많습니다. ${FAIL_WINDOW_MIN}분 후 다시 시도해 주십시오.`;
 // deno-lint-ignore no-explicit-any
 function str(v: any) {
   return String(v ?? "").trim();
@@ -108,13 +145,15 @@ async function authenticate(loginId: string, password: string): Promise<Admin | 
 }
 
 /* ---------------- 매장 ---------------- */
-// 자동생성 코드는 영문 약어 + 숫자 4자리 (한글이 들어가면 입력이 불편하고 파일 경로에도 쓸 수 없음)
+// 자동생성 코드는 영문 약어 + 무작위 6자리 (추측 방지. 헷갈리는 0/O, 1/I 제외)
 const BRAND_PREFIX: Record<string, string> = {
   "애슐리퀸즈": "AQ", "델리바이애슐리": "DA", "리미니": "RM", "자연별곡": "JB", "피자몰": "PM",
   "로운": "RW", "프랑제리": "FR", "프랜차이즈": "FC", "카페": "CF",
 };
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function genStoreCode(brand: string) {
-  return (BRAND_PREFIX[brand] || "EL") + "-" + Math.floor(1000 + Math.random() * 9000);
+  const rand = crypto.getRandomValues(new Uint8Array(6));
+  return (BRAND_PREFIX[brand] || "EL") + "-" + Array.from(rand, (b) => CODE_CHARS[b % CODE_CHARS.length]).join("");
 }
 
 // 매장코드를 대소문자 구분 없이 조회 (먼저 만든 매장 순).
@@ -158,7 +197,7 @@ async function registerStore(payload: any) {
   const invalid = validateStoreFields(fields);
   if (invalid) return text(invalid, 400);
   if (customCode && !STORE_CODE_RE.test(customCode)) {
-    return text("매장코드는 영문, 숫자, 하이픈(-) 조합 3~20자로 입력해 주십시오.", 400);
+    return text(STORE_CODE_RULE, 400);
   }
   if (customCode && await isStoreCodeTaken(customCode)) {
     return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력해 주십시오.", 409);
@@ -198,7 +237,7 @@ async function updateStore(payload: any) {
   if (!current) return text("존재하지 않는 매장입니다.", 404);
   // 예전에 발급된 코드(한글 포함 등)는 그대로 두는 경우 허용, 바꿀 때만 형식 검사
   if (fields.store_code !== current.store_code.toUpperCase() && !STORE_CODE_RE.test(fields.store_code)) {
-    return text("매장코드는 영문, 숫자, 하이픈(-) 조합 3~20자로 입력해 주십시오.", 400);
+    return text(STORE_CODE_RULE, 400);
   }
   if (fields.store_code === current.store_code.toUpperCase()) fields.store_code = current.store_code;
   if (await isStoreCodeTaken(fields.store_code, id)) {
@@ -298,78 +337,221 @@ async function deleteAdmin(payload: any) {
   return json({ ok: true });
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+/* ---------------- 매장 (매장코드로 인증) ---------------- */
+type Store = { id: string; store_code: string; store_name: string; brand: string; manager_name: string };
+
+async function authenticateStore(code: string): Promise<Store | null> {
+  if (!code) return null;
+  const rows = await findStoresByCode(code, "id, store_code, store_name, brand, manager_name");
+  // 대소문자만 다른 예전 코드가 여러 개면: 정확히 일치 > 대문자 일치 > 먼저 만든 매장 순
+  return rows.find((r) => r.store_code === code)
+    || rows.find((r) => r.store_code === code.toUpperCase())
+    || rows[0]
+    || null;
+}
+
+async function listSubcontractors() {
+  const { data, error } = await supabaseAdmin
+    .from("subcontractors")
+    .select("id, company_name, site_manager_name, email")
+    .order("company_name");
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+async function storeHistory(store: Store) {
+  const { data, error } = await supabaseAdmin
+    .from("submissions")
+    .select("id, work_date, work_type, email_status, document_url, created_at, subcontractors(company_name)")
+    .eq("store_id", store.id)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  // 저장 경로는 내려보내지 않고 문서 유무만 전달
+  const history = (data ?? []).map(({ document_url, ...r }) => ({ ...r, has_document: !!document_url }));
+  return json({ ok: true, history });
+}
+
+// 업로드 경로: <매장 id>/<타임스탬프>_report.pdf, <매장 id>/<타임스탬프>_photo1~5.jpg
+// deno-lint-ignore no-explicit-any
+async function storeUploadUrls(store: Store, payload: any) {
+  const photoCount = Math.min(Math.max(parseInt(payload?.photo_count) || 0, 0), MAX_PHOTOS);
+  const stamp = Date.now();
+  const paths = [`${store.id}/${stamp}_report.pdf`];
+  for (let i = 1; i <= photoCount; i++) paths.push(`${store.id}/${stamp}_photo${i}.jpg`);
+  const uploads = [];
+  for (const path of paths) {
+    const { data, error } = await supabaseAdmin.storage.from(BUCKET).createSignedUploadUrl(path);
+    if (error) throw new Error("업로드 준비 실패: " + error.message);
+    uploads.push({ path: data.path, token: data.token });
   }
-  if (req.method !== "POST") {
-    return text("Method not allowed", 405);
+  return json({ ok: true, document: uploads[0], photos: uploads.slice(1) });
+}
+
+// deno-lint-ignore no-explicit-any
+async function storeSubmit(store: Store, payload: any) {
+  const fields = {
+    subcontractor_id: str(payload?.subcontractor_id),
+    work_date: str(payload?.work_date),
+    work_type: str(payload?.work_type),
+    defect_description: str(payload?.defect_description),
+  };
+  if (Object.values(fields).some((v) => !v)) return text("필수 항목을 모두 입력해 주십시오.", 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fields.work_date)) return text("수행일자 형식이 올바르지 않습니다.", 400);
+  if (fields.work_type.length > 200 || fields.defect_description.length > 5000) return text("입력값이 너무 깁니다.", 400);
+
+  // 업로드 경로는 반드시 이 매장 폴더의 정해진 형식이어야 함 (다른 매장/임의 파일 지정 차단)
+  const docRe = /^([0-9a-f-]{36})\/(\d+)_report\.pdf$/;
+  const photoRe = /^([0-9a-f-]{36})\/(\d+)_photo[1-5]\.jpg$/;
+  const document_url = str(payload?.document_path);
+  const photo_urls: string[] = Array.isArray(payload?.photo_paths) ? payload.photo_paths.map(str) : [];
+  const doc = docRe.exec(document_url);
+  const badPath = !doc || doc[1] !== store.id || photo_urls.length > MAX_PHOTOS ||
+    !photo_urls.every((p) => {
+      const m = photoRe.exec(p);
+      return m && m[1] === store.id && m[2] === doc[2];
+    });
+  if (badPath) return text("첨부 파일 경로가 올바르지 않습니다.", 400);
+
+  // 문서가 실제로 업로드되었는지 확인
+  const [folder, fileName] = document_url.split("/");
+  const { data: files } = await supabaseAdmin.storage.from(BUCKET).list(folder, { search: fileName });
+  if (!files?.some((f) => f.name === fileName)) {
+    return text("요청서 파일이 업로드되지 않았습니다. 다시 시도해 주십시오.", 400);
   }
 
-  try {
-    const { action, login_id, password, payload } = await req.json();
+  const { data: sub } = await supabaseAdmin.from("subcontractors").select("id").eq("id", fields.subcontractor_id).maybeSingle();
+  if (!sub) return text("수급사를 다시 선택해 주십시오.", 400);
 
-    // ---------- 공개 action ----------
-    if (action === "register_store") {
-      return await registerStore(payload);
+  const { data, error } = await supabaseAdmin.from("submissions").insert({
+    ...fields,
+    store_id: store.id,
+    work_location: `${store.brand} (${store.store_name})`, // 수행장소는 서버가 매장 정보로 기재
+    photo_urls,
+    document_url,
+    email_status: "pending",
+  }).select("id").single();
+  if (error) throw new Error(error.message);
+  return json({ ok: true, submission_id: data.id });
+}
+
+async function signedDocUrl(submissionId: string, storeId?: string) {
+  if (!/^[0-9a-f-]{36}$/.test(submissionId)) return text("문서를 찾을 수 없습니다.", 404);
+  let q = supabaseAdmin.from("submissions").select("document_url").eq("id", submissionId);
+  if (storeId) q = q.eq("store_id", storeId); // 매장은 자기 매장 문서만
+  const { data } = await q.maybeSingle();
+  if (!data?.document_url) return text("문서를 찾을 수 없습니다.", 404);
+  const { data: signed, error } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(data.document_url, 60);
+  if (error) throw new Error(error.message);
+  return json({ ok: true, url: signed.signedUrl });
+}
+
+/* ---------------- 요청 처리 ---------------- */
+async function handle(req: Request): Promise<Response> {
+  if (req.method !== "POST") return text("Method not allowed", 405);
+
+  const { action, login_id, password, payload } = await req.json();
+  const ip = clientIp(req);
+
+  // ---------- 공개 action ----------
+  if (action === "register_store") {
+    // 매장코드 대량 생성 방지: IP당 15분에 10건까지
+    const regKey = "register:" + ip;
+    if (await isLocked(regKey)) return text("매장코드 발급 요청이 너무 많습니다. 잠시 후 다시 시도해 주십시오.", 429);
+    const res = await registerStore(payload);
+    if (res.ok) await recordFailure(regKey);
+    return res;
+  }
+
+  // ---------- 매장 action (매장코드 검증) ----------
+  if (typeof action === "string" && (action === "lookup_store" || action.startsWith("store_"))) {
+    const lockKey = "store:" + ip;
+    if (await isLocked(lockKey)) return text(LOCKED_MSG, 429);
+    const code = str(payload?.store_code);
+    if (!code) return text("매장코드를 입력해 주십시오.", 400);
+    const store = await authenticateStore(code);
+    if (!store) {
+      await recordFailure(lockKey);
+      return text("존재하지 않는 매장코드입니다.", 404);
     }
-
-    if (action === "lookup_store") {
-      const code = str(payload?.store_code);
-      if (!code) return text("매장코드를 입력해 주십시오.", 400);
-      const rows = await findStoresByCode(code, "id, store_code, store_name, brand, manager_name");
-      // 대소문자만 다른 예전 코드가 여러 개면: 정확히 일치 > 대문자 일치 > 먼저 만든 매장 순
-      const data = rows.find((r) => r.store_code === code)
-        || rows.find((r) => r.store_code === code.toUpperCase())
-        || rows[0];
-      if (!data) return text("존재하지 않는 매장코드입니다.", 404);
-      return json({ ok: true, store: data });
-    }
-
-    // ---------- 관리자 action (로그인 필요) ----------
-    const admin = await authenticate(str(login_id), String(password ?? ""));
-    if (!admin) {
-      return text("아이디 또는 비밀번호가 올바르지 않습니다.", 401);
-    }
-
-    if (action === "verify") {
-      return json({ ok: true, admin });
-    }
-
-    if (action === "list_stores") {
-      const { data, error } = await supabaseAdmin
-        .from("stores")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (error) throw new Error(error.message);
-      return json({ ok: true, stores: data });
-    }
-
-    if (action === "list_submissions") {
-      const { data, error } = await supabaseAdmin
-        .from("submissions")
-        .select("*, stores(store_code, store_name, brand, manager_name, manager_email), subcontractors(company_name, site_manager_name, email)")
-        .order("created_at", { ascending: false });
-      if (error) throw new Error(error.message);
-      return json({ ok: true, submissions: data });
-    }
-
-    // ---------- 마스터 전용 action ----------
-    const MASTER_ACTIONS: Record<string, (p: unknown) => Promise<Response>> = {
-      update_store: updateStore,
-      save_subcontractor: saveSubcontractor,
-      update_submission: updateSubmission,
-      list_admins: listAdmins,
-      create_admin: createAdmin,
-      delete_admin: deleteAdmin,
-    };
-    if (action in MASTER_ACTIONS) {
-      if (admin.role !== "master") return text("마스터 관리자만 수정할 수 있습니다.", 403);
-      return await MASTER_ACTIONS[action](payload);
-    }
-
+    if (action === "lookup_store") return json({ ok: true, store, subcontractors: await listSubcontractors() });
+    if (action === "store_history") return await storeHistory(store);
+    if (action === "store_upload_urls") return await storeUploadUrls(store, payload);
+    if (action === "store_submit") return await storeSubmit(store, payload);
+    if (action === "store_doc_url") return await signedDocUrl(str(payload?.submission_id), store.id);
     return text("알 수 없는 요청입니다.", 400);
-  } catch (err) {
-    return text(String(err.message || err), 500);
   }
+
+  // ---------- 관리자 action (로그인 필요) ----------
+  const lockKey = "admin:" + ip;
+  if (await isLocked(lockKey)) return text(LOCKED_MSG, 429);
+  const admin = await authenticate(str(login_id), String(password ?? ""));
+  if (!admin) {
+    await recordFailure(lockKey);
+    return text("아이디 또는 비밀번호가 올바르지 않습니다.", 401);
+  }
+
+  if (action === "verify") {
+    return json({ ok: true, admin });
+  }
+
+  if (action === "list_stores") {
+    const { data, error } = await supabaseAdmin
+      .from("stores")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return json({ ok: true, stores: data });
+  }
+
+  if (action === "list_submissions") {
+    const { data, error } = await supabaseAdmin
+      .from("submissions")
+      .select("*, stores(store_code, store_name, brand, manager_name, manager_email), subcontractors(company_name, site_manager_name, email)")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return json({ ok: true, submissions: data });
+  }
+
+  if (action === "list_subcontractors") {
+    return json({ ok: true, subcontractors: await listSubcontractors() });
+  }
+
+  if (action === "admin_doc_url") {
+    return await signedDocUrl(str(payload?.submission_id));
+  }
+
+  // ---------- 마스터 전용 action ----------
+  const MASTER_ACTIONS: Record<string, (p: unknown) => Promise<Response>> = {
+    update_store: updateStore,
+    save_subcontractor: saveSubcontractor,
+    update_submission: updateSubmission,
+    list_admins: listAdmins,
+    create_admin: createAdmin,
+    delete_admin: deleteAdmin,
+  };
+  if (action in MASTER_ACTIONS) {
+    if (admin.role !== "master") return text("마스터 관리자만 수정할 수 있습니다.", 403);
+    return await MASTER_ACTIONS[action](payload);
+  }
+
+  return text("알 수 없는 요청입니다.", 400);
+}
+
+Deno.serve(async (req) => {
+  const origin = (req.headers.get("origin") ?? "").replace(/\/$/, "");
+  const allowed = ALLOWED_ORIGINS.includes(origin);
+
+  let res: Response;
+  if (req.method === "OPTIONS") {
+    res = new Response(null, { status: allowed ? 204 : 403, headers: corsHeaders });
+  } else {
+    try {
+      res = await handle(req);
+    } catch (err) {
+      console.error(err); // 상세 원인은 Supabase 로그에만 남기고 화면에는 일반 메시지
+      res = text("요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주십시오.", 500);
+    }
+  }
+  if (allowed) res.headers.set("Access-Control-Allow-Origin", origin);
+  return res;
 });

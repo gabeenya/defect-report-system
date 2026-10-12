@@ -40,12 +40,13 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-// 브라우저(GitHub Pages)에서 호출하므로 CORS 허용 헤더 필수.
-// 없으면 브라우저가 preflight(OPTIONS)에서 요청을 막아버림.
+// CORS: 허용한 사이트에서만 브라우저 호출 허용 (admin-action과 동일한 ALLOWED_ORIGINS 사용)
+const ALLOWED_ORIGINS = ((Deno.env.get("ALLOWED_ORIGINS") ?? "").trim() || "https://gabeenya.github.io")
+  .split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean);
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+  "Vary": "Origin",
 };
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {
@@ -81,7 +82,7 @@ function textResponse(body: string, status: number) {
   return new Response(body, { status, headers: corsHeaders });
 }
 
-Deno.serve(async (req) => {
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -182,4 +183,14 @@ Deno.serve(async (req) => {
       .eq("id", submissionId);
     return textResponse(msg, 500);
   }
+}
+
+Deno.serve(async (req) => {
+  const origin = (req.headers.get("origin") ?? "").replace(/\/$/, "");
+  const allowed = ALLOWED_ORIGINS.includes(origin);
+  const res = req.method === "OPTIONS"
+    ? new Response(null, { status: allowed ? 204 : 403, headers: corsHeaders })
+    : await handle(req);
+  if (allowed) res.headers.set("Access-Control-Allow-Origin", origin);
+  return res;
 });
