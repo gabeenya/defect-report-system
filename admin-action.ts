@@ -27,6 +27,8 @@
 //   ADMIN_PASSWORD   - 마스터 관리자 비밀번호 (index.html에는 존재하지 않음)
 //   ADMIN_ID         - (선택) 마스터 관리자 아이디. 비워두면 "master"
 //   ALLOWED_ORIGINS  - (선택) 호출을 허용할 사이트 주소(쉼표 구분). 비워두면 https://gabeenya.github.io
+//   ALLOWED_EMAIL_DOMAINS - (선택) 매장 담당자 이메일로 허용할 회사 도메인(쉼표 구분). 비워두면 eland.co.kr
+//                    → 외부인이 매장코드를 만들어 회사 이름으로 메일을 보내고 회신을 가로채는 것 방지
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY - Supabase가 자동 주입
 //
 // 무차별 대입 방지: 매장코드/관리자 로그인 실패가 IP당 15분에 10회를 넘으면 15분간 차단 (auth_failures 테이블)
@@ -46,6 +48,23 @@ const BRANDS = ["애슐리퀸즈","델리바이애슐리","리미니","자연별
 const STORE_CODE_RE = /^[A-Z0-9-]{5,20}$/;
 const STORE_CODE_RULE = "매장코드는 영문, 숫자, 하이픈(-) 조합 5~20자로 입력해 주십시오.";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ALLOWED_EMAIL_DOMAINS = ((Deno.env.get("ALLOWED_EMAIL_DOMAINS") ?? "").trim() || "eland.co.kr")
+  .split(",").map((s) => s.trim().toLowerCase().replace(/^@/, "")).filter(Boolean);
+function isCompanyEmail(email: string) {
+  const domain = email.split("@").pop()!.toLowerCase();
+  return ALLOWED_EMAIL_DOMAINS.includes(domain);
+}
+const COMPANY_EMAIL_RULE = `매장 담당자 이메일은 회사 이메일(${ALLOWED_EMAIL_DOMAINS.map((d) => "@" + d).join(", ")})만 사용할 수 있습니다.`;
+
+// 업로드 파일이 실제 PDF/JPEG인지 파일 앞부분(시그니처)으로 확인 — 다른 종류 파일을 위장해 올리는 것 차단
+const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
+const JPEG_MAGIC = [0xff, 0xd8, 0xff];
+async function hasMagic(path: string, magic: number[]) {
+  const { data, error } = await supabaseAdmin.storage.from(BUCKET).download(path);
+  if (error || !data) return false;
+  const head = new Uint8Array(await data.slice(0, magic.length).arrayBuffer());
+  return magic.every((b, i) => head[i] === b);
+}
 const LOGIN_ID_RE = /^[a-zA-Z0-9._-]{3,30}$/;
 const EDITABLE_STATUS = ["sent", "failed"]; // 'pending'으로 되돌리면 재발송 대상이 되므로 제외
 const BUCKET = "defect-reports";
@@ -181,6 +200,7 @@ function validateStoreFields(f: any) {
   if (!f.store_name || !f.manager_name || !f.manager_email) return "필수 항목을 모두 입력해 주십시오.";
   if (f.store_name.length > 100 || f.manager_name.length > 50) return "입력값이 너무 깁니다.";
   if (!EMAIL_RE.test(f.manager_email)) return "이메일 형식이 올바르지 않습니다.";
+  if (!isCompanyEmail(f.manager_email)) return COMPANY_EMAIL_RULE;
   return null;
 }
 
@@ -417,6 +437,14 @@ async function storeSubmit(store: Store, payload: any) {
   const { data: files } = await supabaseAdmin.storage.from(BUCKET).list(folder, { search: fileName });
   if (!files?.some((f) => f.name === fileName)) {
     return text("요청서 파일이 업로드되지 않았습니다. 다시 시도해 주십시오.", 400);
+  }
+  // 실제 파일 형식 확인: 위장 파일이면 저장소에서 지우고 거부
+  const badFiles: string[] = [];
+  if (!(await hasMagic(document_url, PDF_MAGIC))) badFiles.push(document_url);
+  for (const p of photo_urls) if (!(await hasMagic(p, JPEG_MAGIC))) badFiles.push(p);
+  if (badFiles.length) {
+    await supabaseAdmin.storage.from(BUCKET).remove([document_url, ...photo_urls]);
+    return text("첨부 파일 형식이 올바르지 않습니다. 다시 작성해 주십시오.", 400);
   }
 
   const { data: sub } = await supabaseAdmin.from("subcontractors").select("id").eq("id", fields.subcontractor_id).maybeSingle();

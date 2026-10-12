@@ -202,8 +202,8 @@
     <input id="newStoreName" placeholder="예: 스타필드시티 부천점">
     <label>매장 담당자명</label>
     <input id="newManagerName">
-    <label>매장 담당자 이메일</label>
-    <input id="newManagerEmail" type="email">
+    <label>매장 담당자 이메일 (회사 이메일 @eland.co.kr만 가능)</label>
+    <input id="newManagerEmail" type="email" placeholder="예: hong@eland.co.kr">
     <label>매장코드 (영문/숫자/하이픈 5~20자, 미입력시 자동생성)</label>
     <input id="newStoreCode" placeholder="예: AL000" autocomplete="off" autocapitalize="characters">
     <div class="notice">[개인정보 수집·이용 안내] 수집 항목: 매장 담당자명, 이메일 / 이용 목적: 하자개선 요청서 발송 및 수급사 회신 수신 / 담당자 변경 또는 삭제가 필요하면 관리자에게 요청해 주십시오.</div>
@@ -243,7 +243,7 @@
     <input id="editStoreName">
     <label>매장 담당자명</label>
     <input id="editStoreManagerName">
-    <label>매장 담당자 이메일 (메일 회신 주소)</label>
+    <label>매장 담당자 이메일 (메일 회신 주소, 회사 이메일만 가능)</label>
     <input id="editStoreManagerEmail" type="email">
     <button id="saveStoreBtn" onclick="saveStore()">저장</button>
   </div>

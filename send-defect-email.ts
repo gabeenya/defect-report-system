@@ -13,6 +13,7 @@
 //                   네이버: 2단계 인증을 켰다면 네이버 "앱 비밀번호", 아니면 로그인 비밀번호
 //                   (네이버 메일 환경설정 > POP3/IMAP 설정에서 SMTP 사용을 켜둬야 함)
 //   SMTP_FROM     - (선택) 발신자로 표시할 주소. 비워두면 SMTP_USER 사용
+//   ALLOWED_EMAIL_DOMAINS - (선택) 회신 주소로 허용할 회사 도메인(쉼표 구분). 비워두면 eland.co.kr
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY - Supabase가 자동 주입
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -41,6 +42,10 @@ const supabaseAdmin = createClient(
 );
 
 // CORS: 허용한 사이트에서만 브라우저 호출 허용 (admin-action과 동일한 ALLOWED_ORIGINS 사용)
+// 회신 주소(매장 담당자)는 회사 도메인만 허용 (admin-action과 동일한 ALLOWED_EMAIL_DOMAINS 사용)
+const ALLOWED_EMAIL_DOMAINS = ((Deno.env.get("ALLOWED_EMAIL_DOMAINS") ?? "").trim() || "eland.co.kr")
+  .split(",").map((s) => s.trim().toLowerCase().replace(/^@/, "")).filter(Boolean);
+
 const ALLOWED_ORIGINS = ((Deno.env.get("ALLOWED_ORIGINS") ?? "").trim() || "https://gabeenya.github.io")
   .split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean);
 const corsHeaders = {
@@ -120,6 +125,9 @@ async function handle(req: Request): Promise<Response> {
     if (!to || !documentPath) throw new Error("수신 이메일 또는 문서 정보 없음");
     // 공용 발신 주소로 회신이 오지 않도록 Reply-To(매장 담당자)가 없으면 발송하지 않음
     if (!replyTo) throw new Error("매장 담당자 이메일 없음 (회신 주소 미지정으로 발송 중단)");
+    if (!ALLOWED_EMAIL_DOMAINS.includes(replyTo.split("@").pop()!.toLowerCase())) {
+      throw new Error("매장 담당자 이메일이 회사 이메일이 아님 (관리자 화면에서 매장 정보 수정 필요)");
+    }
     const brand: string = row.stores?.brand || "";
     const storeName: string = row.stores?.store_name || "";
     const managerName: string = row.stores?.manager_name || "";
@@ -129,7 +137,11 @@ async function handle(req: Request): Promise<Response> {
     const { data: fileData, error: dlErr } = await supabaseAdmin
       .storage.from("defect-reports").download(documentPath);
     if (dlErr) throw new Error("문서 다운로드 실패: " + dlErr.message);
-    const base64 = arrayBufferToBase64(await fileData.arrayBuffer());
+    const fileBuf = await fileData.arrayBuffer();
+    // 실제 PDF인지 확인 ("%PDF-"로 시작) — 다른 파일을 PDF로 위장해 발송하는 것 차단
+    const head = new Uint8Array(fileBuf.slice(0, 5));
+    if (String.fromCharCode(...head) !== "%PDF-") throw new Error("첨부 문서가 PDF 형식이 아님 (발송 중단)");
+    const base64 = arrayBufferToBase64(fileBuf);
     // 메일 라이브러리가 첨부 파일명을 인코딩하지 않으므로 한글/공백 없는 영문 파일명 사용
     const fileName = `ElandEats_DefectReport_${row.work_date || ""}.pdf`;
 
