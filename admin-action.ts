@@ -4,7 +4,7 @@
 //
 //   - 공개 action (로그인 불필요):
 //       register_store : 매장 사용자가 직접 매장코드 생성
-//       lookup_store   : 매장코드로 접속 (코드가 정확히 일치하는 매장 1건만 반환)
+//       lookup_store   : 매장코드로 접속 (대소문자 구분 없이 일치하는 매장 1건만 반환)
 //   - 관리자 action (마스터 + 일반 관리자, 조회 전용):
 //       verify, list_stores, list_submissions
 //   - 마스터 전용 action (수정 권한):
@@ -117,6 +117,24 @@ function genStoreCode(brand: string) {
   return (BRAND_PREFIX[brand] || "EL") + "-" + Math.floor(1000 + Math.random() * 9000);
 }
 
+// 매장코드를 대소문자 구분 없이 조회 (먼저 만든 매장 순).
+// LIKE 와일드카드(% _ \, PostgREST의 *)가 들어간 코드는 패턴으로 해석되지 않도록 정확히 일치만 검색
+// deno-lint-ignore no-explicit-any
+async function findStoresByCode(code: string, columns: string): Promise<any[]> {
+  const base = supabaseAdmin.from("stores").select(columns).order("created_at", { ascending: true }).limit(5);
+  const { data, error } = /[%_*\\]/.test(code)
+    ? await base.eq("store_code", code)
+    : await base.ilike("store_code", code);
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+// 대소문자만 다른 코드도 중복으로 취급 (excludeId: 수정 중인 매장 자신은 제외)
+async function isStoreCodeTaken(code: string, excludeId?: string) {
+  const rows = await findStoresByCode(code, "id");
+  return rows.some((r) => r.id !== excludeId);
+}
+
 // 매장 정보 입력값 검증 (생성/수정 공통). 오류 메시지 또는 null 반환
 // deno-lint-ignore no-explicit-any
 function validateStoreFields(f: any) {
@@ -141,6 +159,9 @@ async function registerStore(payload: any) {
   if (invalid) return text(invalid, 400);
   if (customCode && !STORE_CODE_RE.test(customCode)) {
     return text("매장코드는 영문, 숫자, 하이픈(-) 조합 3~20자로 입력해 주십시오.", 400);
+  }
+  if (customCode && await isStoreCodeTaken(customCode)) {
+    return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력해 주십시오.", 409);
   }
 
   // 직접 지정한 코드는 1회만 시도, 자동생성은 중복 시 몇 번 재시도
@@ -180,6 +201,9 @@ async function updateStore(payload: any) {
     return text("매장코드는 영문, 숫자, 하이픈(-) 조합 3~20자로 입력해 주십시오.", 400);
   }
   if (fields.store_code === current.store_code.toUpperCase()) fields.store_code = current.store_code;
+  if (await isStoreCodeTaken(fields.store_code, id)) {
+    return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력해 주십시오.", 409);
+  }
 
   const { error } = await supabaseAdmin.from("stores").update(fields).eq("id", id);
   if (error?.code === "23505") return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력해 주십시오.", 409);
@@ -293,12 +317,11 @@ Deno.serve(async (req) => {
     if (action === "lookup_store") {
       const code = str(payload?.store_code);
       if (!code) return text("매장코드를 입력해 주십시오.", 400);
-      const { data, error } = await supabaseAdmin
-        .from("stores")
-        .select("id, store_code, store_name, brand, manager_name")
-        .eq("store_code", code)
-        .maybeSingle();
-      if (error) throw new Error(error.message);
+      const rows = await findStoresByCode(code, "id, store_code, store_name, brand, manager_name");
+      // 대소문자만 다른 예전 코드가 여러 개면: 정확히 일치 > 대문자 일치 > 먼저 만든 매장 순
+      const data = rows.find((r) => r.store_code === code)
+        || rows.find((r) => r.store_code === code.toUpperCase())
+        || rows[0];
       if (!data) return text("존재하지 않는 매장코드입니다.", 404);
       return json({ ok: true, store: data });
     }
