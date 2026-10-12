@@ -43,8 +43,13 @@ function text(body: string, status: number) {
   return new Response(body, { status, headers: corsHeaders });
 }
 
+// 자동생성 코드는 영문 약어 + 숫자 4자리 (한글이 들어가면 입력이 불편하고 파일 경로에도 쓸 수 없음)
+const BRAND_PREFIX: Record<string, string> = {
+  "애슐리퀸즈": "AQ", "델리바이애슐리": "DA", "리미니": "RM", "자연별곡": "JB", "피자몰": "PM",
+  "로운": "RW", "프랑제리": "FR", "프랜차이즈": "FC", "카페": "CF",
+};
 function genStoreCode(brand: string) {
-  return (brand.slice(0, 2) + "-" + Math.floor(1000 + Math.random() * 9000)).toUpperCase();
+  return (BRAND_PREFIX[brand] || "EL") + "-" + Math.floor(1000 + Math.random() * 9000);
 }
 
 // deno-lint-ignore no-explicit-any

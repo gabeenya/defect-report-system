@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     .update({ email_status: "sending" })
     .eq("id", submissionId)
     .eq("email_status", "pending")
-    .select("id, document_url, stores(manager_email), subcontractors(email)")
+    .select("id, work_date, document_url, stores(manager_email), subcontractors(email)")
     .maybeSingle();
   if (claimErr) return textResponse("조회 실패: " + claimErr.message, 500);
   if (!claimed) return textResponse("발송 대기 상태인 요청서가 아님", 409);
@@ -91,7 +91,8 @@ Deno.serve(async (req) => {
       .storage.from("defect-reports").download(documentPath);
     if (dlErr) throw new Error("문서 다운로드 실패: " + dlErr.message);
     const base64 = arrayBufferToBase64(await fileData.arrayBuffer());
-    const fileName = documentPath.split("/").pop() || "하자개선요청서.pdf";
+    // 메일 라이브러리가 첨부 파일명을 인코딩하지 않으므로 한글/공백 없는 영문 파일명 사용
+    const fileName = `ElandEats_DefectReport_${row.work_date || ""}.pdf`;
 
     // 3) SMTP로 메일 발송 (공용 계정 발신, Reply-To는 매장 담당자)
     const client = new SMTPClient({

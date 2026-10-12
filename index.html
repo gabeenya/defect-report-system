@@ -702,14 +702,15 @@ async function submitReport(){
 
     // 2) Storage 업로드 (문서 + 사진)
     statusEl.textContent = '업로드 중...';
+    // Storage 경로에는 한글 등 비ASCII 문자가 허용되지 않음 (Invalid key) → 매장 id(uuid) 폴더 + 영문 파일명 사용
     const stamp = Date.now();
-    const docPath = `${currentStore.store_code}/${stamp}_요청서.pdf`;
+    const docPath = `${currentStore.id}/${stamp}_report.pdf`;
     const { error: docErr } = await sb.storage.from('defect-reports').upload(docPath, blob, { contentType: 'application/pdf' });
     if(docErr) throw new Error('문서 업로드 실패: ' + docErr.message);
 
     const photoPaths = [];
     for(let i=0;i<selectedPhotos.length;i++){
-      const p = `${currentStore.store_code}/${stamp}_photo${i+1}.jpg`;
+      const p = `${currentStore.id}/${stamp}_photo${i+1}.jpg`;
       const { error: pErr } = await sb.storage.from('defect-reports').upload(p, selectedPhotos[i]);
       if(!pErr) photoPaths.push(p);
     }
