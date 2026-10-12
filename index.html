@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>결과물 하자 개선 요청서 시스템</title>
+<title>결과물 하자 개선 요청서 시스템 | 이랜드이츠</title>
+<meta name="description" content="주식회사 이랜드이츠 결과물 하자 개선 요청서 작성·발송 시스템">
+<meta name="theme-color" content="#102a4c">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2064%2064'%3E%3Crect%20width%3D'64'%20height%3D'64'%20rx%3D'14'%20fill%3D'%23102a4c'%2F%3E%3Cpath%20d%3D'M19%2013h27v8H28v8.5h-9zM19%2034.5h9V43h18v8H19z'%20fill%3D'%23fff'%2F%3E%3Cpath%20d%3D'M19%2028h22v8H19z'%20fill%3D'%23b08d3f'%2F%3E%3C%2Fsvg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -116,7 +119,7 @@
     <label>매장코드</label>
     <input id="entryCode" placeholder="예: SF-0921" autocomplete="off">
     <button onclick="enterStore()">접속</button>
-    <button class="secondary" onclick="openStoreRegister()">매장코드가 없어요 · 새로 만들기</button>
+    <button class="secondary" onclick="openStoreRegister()">매장코드 신규 발급</button>
     <div style="margin-top:16px; text-align:center;">
       <span class="link" onclick="showScreen('admin-login')">관리자 화면 (매장목록/수급사/발송이력)</span>
     </div>
@@ -143,7 +146,7 @@
 
   <!-- ================= 매장코드 생성 (매장 사용자) ================= -->
   <div id="screen-store-register" class="card hidden">
-    <div class="topbar"><h2 style="margin:0;">매장코드 만들기</h2><span class="link" onclick="showScreen('entry')">뒤로</span></div>
+    <div class="topbar"><h2 style="margin:0;">매장코드 신규 발급</h2><span class="link" onclick="showScreen('entry')">뒤로</span></div>
     <label>브랜드</label>
     <select id="newBrand"></select>
     <label>매장명</label>
@@ -154,15 +157,15 @@
     <input id="newManagerEmail" type="email">
     <label>매장코드 (영문/숫자/하이픈 3~20자, 미입력시 자동생성)</label>
     <input id="newStoreCode" placeholder="예: BUCHEON01" autocomplete="off">
-    <button id="createStoreBtn" onclick="createStore()">생성</button>
-    <div class="notice">매장코드는 매장 접속용 비밀번호처럼 쓰이니 매장 내부에서만 공유해줘. 잊어버리면 관리자에게 문의하면 확인할 수 있어.</div>
+    <button id="createStoreBtn" onclick="createStore()">발급</button>
+    <div class="notice">매장코드는 매장 접속용 비밀번호로 사용되므로 매장 내부에서만 공유해 주시기 바랍니다. 매장코드를 분실하신 경우 관리자에게 문의해 주십시오.</div>
   </div>
 
   <div id="screen-store-register-done" class="card hidden">
-    <h2>매장코드 생성 완료</h2>
+    <h2>매장코드 발급 완료</h2>
     <div class="muted" id="registeredStoreLabel"></div>
     <div class="code-box" id="registeredStoreCode"></div>
-    <div class="notice">이 코드를 꼭 메모해둬. 다음부터 이 코드로 접속하면 돼.</div>
+    <div class="notice">발급된 매장코드를 반드시 기록해 두시기 바랍니다. 이후 이 코드로 접속하실 수 있습니다.</div>
     <button onclick="enterRegisteredStore()">이 코드로 바로 접속</button>
   </div>
 
@@ -228,7 +231,7 @@
       <label>수급인 회사명</label><input id="editCompanyName">
       <label>현장대리인명</label><input id="editManagerName">
       <label>수신 이메일</label><input id="editEmail" type="email" readonly>
-      <div class="muted">수신 이메일 변경은 관리자 화면 &gt; 수급사 관리에서 가능</div>
+      <div class="muted">수신 이메일 변경은 관리자 화면 &gt; 수급사 관리에서 가능합니다.</div>
     </div>
 
     <label>수행일자</label>
@@ -321,12 +324,12 @@ function escapeHtml(s){
    ============================================================ */
 async function enterStore(){
   const code = document.getElementById('entryCode').value.trim();
-  if(!code){ toast('매장코드를 입력해줘'); return; }
+  if(!code){ toast('매장코드를 입력해 주십시오.'); return; }
   try{
     const { store } = await callPublicAction('lookup_store', { store_code: code });
     await openStore(store);
   }catch(e){
-    toast(e.message || '존재하지 않는 매장코드야');
+    toast(e.message || '존재하지 않는 매장코드입니다.');
   }
 }
 async function openStore(store){
@@ -381,7 +384,7 @@ async function adminLogin(){
     document.getElementById('adminPw').value = '';
     showScreen('admin');
   }catch(e){
-    toast('비밀번호가 틀렸어');
+    toast('비밀번호가 올바르지 않습니다.');
   }
 }
 
@@ -403,8 +406,8 @@ async function createStore(){
   const manager_name = document.getElementById('newManagerName').value.trim();
   const manager_email = document.getElementById('newManagerEmail').value.trim();
   const store_code = document.getElementById('newStoreCode').value.trim().toUpperCase();
-  if(!store_name || !manager_name || !manager_email){ toast('필수 항목을 모두 입력해줘'); return; }
-  if(store_code && !/^[A-Z0-9-]{3,20}$/.test(store_code)){ toast('매장코드는 영문/숫자/하이픈(-) 3~20자로 입력해줘'); return; }
+  if(!store_name || !manager_name || !manager_email){ toast('필수 항목을 모두 입력해 주십시오.'); return; }
+  if(store_code && !/^[A-Z0-9-]{3,20}$/.test(store_code)){ toast('매장코드는 영문, 숫자, 하이픈(-) 조합 3~20자로 입력해 주십시오.'); return; }
 
   const btn = document.getElementById('createStoreBtn');
   btn.disabled = true;
@@ -415,7 +418,7 @@ async function createStore(){
     document.getElementById('registeredStoreCode').textContent = store.store_code;
     showScreen('store-register-done');
   }catch(error){
-    toast('생성 실패: ' + error.message);
+    toast('매장코드 발급에 실패했습니다. ' + error.message);
   }finally{
     btn.disabled = false;
   }
@@ -429,12 +432,12 @@ async function enterRegisteredStore(){
 
 async function loadStoreList(){
   const tbody = document.querySelector('#storeListTable tbody');
-  tbody.innerHTML = `<tr><td colspan="6">불러오는 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6">불러오는 중입니다...</td></tr>`;
   let stores;
   try{
     ({ stores } = await callAdminAction('list_stores'));
-  }catch(e){ tbody.innerHTML = `<tr><td colspan="6">조회 실패</td></tr>`; return; }
-  if(!stores.length){ tbody.innerHTML = `<tr><td colspan="6">등록된 매장이 없어</td></tr>`; return; }
+  }catch(e){ tbody.innerHTML = `<tr><td colspan="6">조회에 실패했습니다.</td></tr>`; return; }
+  if(!stores.length){ tbody.innerHTML = `<tr><td colspan="6">등록된 매장이 없습니다.</td></tr>`; return; }
   tbody.innerHTML = stores.map(s=>`<tr>
     <td><b>${escapeHtml(s.store_code)}</b></td><td>${escapeHtml(s.store_name)}</td><td>${escapeHtml(s.brand)}</td>
     <td>${escapeHtml(s.manager_name)}</td><td>${escapeHtml(s.manager_email)}</td><td>${formatDateTime(s.created_at).slice(0,10)}</td>
@@ -445,7 +448,7 @@ async function loadStoreList(){
 async function loadSubList(){
   const { data, error } = await sb.from('subcontractors').select('*').order('company_name');
   const tbody = document.querySelector('#subListTable tbody');
-  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회 실패</td></tr>`; return; }
+  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회에 실패했습니다.</td></tr>`; return; }
   subcontractors = data;
   tbody.innerHTML = data.map(s=>`
     <tr>
@@ -471,12 +474,12 @@ async function saveSub(){
     email: document.getElementById('subEmail').value.trim(),
     updated_at: new Date().toISOString()
   };
-  if(!payload.company_name || !payload.site_manager_name || !payload.email){ toast('필수 항목을 입력해줘'); return; }
+  if(!payload.company_name || !payload.site_manager_name || !payload.email){ toast('필수 항목을 모두 입력해 주십시오.'); return; }
 
   try{
     await callAdminAction('save_subcontractor', id ? {...payload, id} : payload);
-  }catch(error){ toast('저장 실패: ' + error.message); return; }
-  toast('저장 완료');
+  }catch(error){ toast('저장에 실패했습니다. ' + error.message); return; }
+  toast('저장되었습니다.');
   await loadSubList();
   showScreen('admin-sub');
 }
@@ -484,12 +487,12 @@ async function saveSub(){
 /* ---- 관리자: 전체 발송 이력 ---- */
 async function loadAllHistory(){
   const tbody = document.querySelector('#adminHistoryTable tbody');
-  tbody.innerHTML = `<tr><td colspan="5">불러오는 중...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5">불러오는 중입니다...</td></tr>`;
   let submissions;
   try{
     ({ submissions } = await callAdminAction('list_submissions'));
-  }catch(e){ tbody.innerHTML = `<tr><td colspan="5">조회 실패</td></tr>`; return; }
-  if(!submissions.length){ tbody.innerHTML = `<tr><td colspan="5">발송 이력이 없어</td></tr>`; return; }
+  }catch(e){ tbody.innerHTML = `<tr><td colspan="5">조회에 실패했습니다.</td></tr>`; return; }
+  if(!submissions.length){ tbody.innerHTML = `<tr><td colspan="5">발송 이력이 없습니다.</td></tr>`; return; }
   tbody.innerHTML = submissions.map(r=>{
     const storeLabel = r.stores ? `${r.stores.brand} (${r.stores.store_name})` : '-';
     return `<tr>
@@ -509,7 +512,7 @@ async function downloadHistoryExcel(){
   try{
     // 화면을 열어둔 사이 새로 들어온 건까지 포함되도록 다시 조회
     const { submissions } = await callAdminAction('list_submissions');
-    if(!submissions.length){ toast('다운로드할 발송 이력이 없어'); return; }
+    if(!submissions.length){ toast('다운로드할 발송 이력이 없습니다.'); return; }
 
     const rows = submissions.map((r, i)=>({
       'No': i+1,
@@ -537,7 +540,7 @@ async function downloadHistoryExcel(){
     XLSX.utils.book_append_sheet(wb, ws, '발송이력');
     XLSX.writeFile(wb, `하자개선요청서_발송이력_${todayStr()}.xlsx`);
   }catch(e){
-    toast('엑셀 다운로드 실패: ' + e.message);
+    toast('엑셀 다운로드에 실패했습니다. ' + e.message);
   }finally{
     btn.disabled = false;
   }
@@ -679,7 +682,7 @@ async function submitReport(){
   const workDate = document.getElementById('reportWorkDate').value;
   const workType = document.getElementById('reportWorkType').value.trim();
   const description = document.getElementById('reportDesc').value.trim();
-  if(!subId || !workDate || !workType || !description){ toast('필수 항목을 모두 입력해줘'); return; }
+  if(!subId || !workDate || !workType || !description){ toast('필수 항목을 모두 입력해 주십시오.'); return; }
 
   const companyName = document.getElementById('editCompanyName').value.trim();
   const siteManagerName = document.getElementById('editManagerName').value.trim();
@@ -736,9 +739,9 @@ async function submitReport(){
         body: JSON.stringify({ submission_id: sub.id })
       });
       if(!res.ok) throw new Error(await res.text());
-      toast('요청서 생성 및 메일 발송 완료');
+      toast('요청서가 생성되어 메일로 발송되었습니다.');
     }catch(mailErr){
-      toast('문서는 저장됐지만 메일 발송은 실패했어 (메일 설정 확인 필요)');
+      toast('요청서는 저장되었으나 메일 발송에 실패했습니다. 관리자에게 문의해 주십시오.');
     }
 
     showScreen('store-home');
@@ -759,7 +762,7 @@ async function loadHistory(){
     .eq('store_id', currentStore.id)
     .order('created_at', {ascending:false});
   const tbody = document.querySelector('#historyTable tbody');
-  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회 실패</td></tr>`; return; }
+  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회에 실패했습니다.</td></tr>`; return; }
   tbody.innerHTML = data.map(r=>{
     return `<tr>
       <td>${r.work_date}</td>
@@ -772,7 +775,7 @@ async function loadHistory(){
 
 async function downloadDoc(path){
   const { data, error } = await sb.storage.from('defect-reports').createSignedUrl(path, 60);
-  if(error){ toast('다운로드 링크 생성 실패'); return; }
+  if(error){ toast('문서 다운로드 링크 생성에 실패했습니다.'); return; }
   window.open(data.signedUrl, '_blank');
 }
 </script>

@@ -55,12 +55,12 @@ async function registerStore(payload: any) {
   const manager_email = String(payload?.manager_email ?? "").trim();
   const customCode = String(payload?.store_code ?? "").trim().toUpperCase();
 
-  if (!BRANDS.includes(brand)) return text("브랜드를 목록에서 선택해줘", 400);
-  if (!store_name || !manager_name || !manager_email) return text("필수 항목을 모두 입력해줘", 400);
-  if (store_name.length > 100 || manager_name.length > 50) return text("입력값이 너무 길어", 400);
-  if (!EMAIL_RE.test(manager_email)) return text("이메일 형식이 올바르지 않아", 400);
+  if (!BRANDS.includes(brand)) return text("브랜드를 목록에서 선택해 주십시오.", 400);
+  if (!store_name || !manager_name || !manager_email) return text("필수 항목을 모두 입력해 주십시오.", 400);
+  if (store_name.length > 100 || manager_name.length > 50) return text("입력값이 너무 깁니다.", 400);
+  if (!EMAIL_RE.test(manager_email)) return text("이메일 형식이 올바르지 않습니다.", 400);
   if (customCode && !STORE_CODE_RE.test(customCode)) {
-    return text("매장코드는 영문/숫자/하이픈(-) 3~20자로 입력해줘", 400);
+    return text("매장코드는 영문, 숫자, 하이픈(-) 조합 3~20자로 입력해 주십시오.", 400);
   }
 
   // 직접 지정한 코드는 1회만 시도, 자동생성은 중복 시 몇 번 재시도
@@ -74,9 +74,9 @@ async function registerStore(payload: any) {
       .single();
     if (!error) return json({ ok: true, store: data });
     if (error.code !== "23505") throw new Error(error.message); // 23505 = unique 위반
-    if (customCode) return text("이미 사용 중인 매장코드야. 다른 코드를 입력해줘", 409);
+    if (customCode) return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력해 주십시오.", 409);
   }
-  return text("매장코드 자동생성에 실패했어. 다시 시도해줘", 500);
+  return text("매장코드 자동 발급에 실패했습니다. 다시 시도해 주십시오.", 500);
 }
 
 Deno.serve(async (req) => {
@@ -97,20 +97,20 @@ Deno.serve(async (req) => {
 
     if (action === "lookup_store") {
       const code = String(payload?.store_code ?? "").trim();
-      if (!code) return text("매장코드를 입력해줘", 400);
+      if (!code) return text("매장코드를 입력해 주십시오.", 400);
       const { data, error } = await supabaseAdmin
         .from("stores")
         .select("id, store_code, store_name, brand, manager_name")
         .eq("store_code", code)
         .maybeSingle();
       if (error) throw new Error(error.message);
-      if (!data) return text("존재하지 않는 매장코드야", 404);
+      if (!data) return text("존재하지 않는 매장코드입니다.", 404);
       return json({ ok: true, store: data });
     }
 
     // ---------- 관리자 action ----------
     if (password !== ADMIN_PASSWORD) {
-      return text("비밀번호가 올바르지 않습니다", 401);
+      return text("비밀번호가 올바르지 않습니다.", 401);
     }
 
     if (action === "verify") {
@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    return text("알 수 없는 action", 400);
+    return text("알 수 없는 요청입니다.", 400);
   } catch (err) {
     return text(String(err.message || err), 500);
   }
