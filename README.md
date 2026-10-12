@@ -56,7 +56,7 @@ const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                  // 1번에서 복사
 2. 함수의 **Secrets** 탭에서 위 4-A 또는 4-B의 값 등록 (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`)
 3. 완료되면 이후 제출 건부터 자동 메일 발송 정상 동작 (기존 "발송 실패" 건은 이력 화면에서 문서만 재확인/수동발송 필요)
 
-메일 제목은 `[이랜드이츠] 하자개선 요청서`로 고정되어 있음 (index.html의 `MAIL_SUBJECT` 값).
+메일 제목은 `[브랜드명][매장명] 하자개선요청서` 형식으로, 매장코드에 등록된 브랜드·매장명이 자동으로 들어감 (send-defect-email.ts의 `mailSubject`).
 
 ## 4-1. 관리자 기능 보안 패치 (admin-action 배포) — 필수
 

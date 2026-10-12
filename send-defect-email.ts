@@ -24,7 +24,16 @@ const SMTP_USER = (Deno.env.get("SMTP_USER") ?? "").trim();
 const SMTP_PASSWORD = (Deno.env.get("SMTP_PASSWORD") ?? "").trim();
 const SMTP_FROM = (Deno.env.get("SMTP_FROM") ?? "").trim() || SMTP_USER;
 
-const MAIL_SUBJECT = "[이랜드이츠] 하자개선 요청서"; // 발송 메일 제목 고정값
+// 발송 메일 제목: "[브랜드명][매장명] 하자개선요청서" (매장 정보는 DB의 매장 기준)
+function mailSubject(brand: string, storeName: string) {
+  return `[${brand || "이랜드이츠"}]${storeName ? `[${storeName}]` : ""} 하자개선요청서`;
+}
+
+// "2026-10-12" → "2026년 10월 12일"
+function formatKoreanDate(ymd: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || "");
+  return m ? `${m[1]}년 ${Number(m[2])}월 ${Number(m[3])}일` : ymd;
+}
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -49,11 +58,23 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
 // 한글 제목을 RFC 2047 Base64 encoded-word로 직접 인코딩.
 // denomailer는 한글 제목을 Q 인코딩하면서 공백·줄바꿈을 그대로 넣어 수신측에서 제목이 깨짐.
 // 앞에 공백을 붙이면 denomailer가 ASCII 문자열로 보고 재인코딩하지 않음 (헤더 값 앞 공백은 무시됨).
+// encoded-word 하나는 75자 이하여야 하므로, 글자 단위로 끊어 여러 개로 나눔 (사이 공백은 수신측에서 무시됨).
 function encodeHeaderUtf8(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return " =?UTF-8?B?" + btoa(binary) + "?=";
+  const encoder = new TextEncoder();
+  const words: string[] = [];
+  let chunk: number[] = [];
+  const flush = () => {
+    if (!chunk.length) return;
+    words.push("=?UTF-8?B?" + btoa(String.fromCharCode(...chunk)) + "?=");
+    chunk = [];
+  };
+  for (const ch of text) {
+    const bytes = encoder.encode(ch);
+    if (chunk.length + bytes.length > 45) flush(); // 45바이트 → base64 60자 + 12자 = 72자
+    chunk.push(...bytes);
+  }
+  flush();
+  return " " + words.join(" ");
 }
 
 function textResponse(body: string, status: number) {
@@ -84,7 +105,7 @@ Deno.serve(async (req) => {
     .update({ email_status: "sending" })
     .eq("id", submissionId)
     .eq("email_status", "pending")
-    .select("id, work_date, document_url, stores(store_name, manager_name, manager_email), subcontractors(email)")
+    .select("id, work_date, document_url, stores(brand, store_name, manager_name, manager_email), subcontractors(email)")
     .maybeSingle();
   if (claimErr) return textResponse("조회 실패: " + claimErr.message, 500);
   if (!claimed) return textResponse("발송 대기 상태인 요청서가 아님", 409);
@@ -98,8 +119,10 @@ Deno.serve(async (req) => {
     if (!to || !documentPath) throw new Error("수신 이메일 또는 문서 정보 없음");
     // 공용 발신 주소로 회신이 오지 않도록 Reply-To(매장 담당자)가 없으면 발송하지 않음
     if (!replyTo) throw new Error("매장 담당자 이메일 없음 (회신 주소 미지정으로 발송 중단)");
+    const brand: string = row.stores?.brand || "";
     const storeName: string = row.stores?.store_name || "";
     const managerName: string = row.stores?.manager_name || "";
+    const workDate = formatKoreanDate(row.work_date);
 
     // 2) Storage에서 문서 다운로드 (service role — 정책 우회)
     const { data: fileData, error: dlErr } = await supabaseAdmin
@@ -126,12 +149,13 @@ Deno.serve(async (req) => {
       from: SMTP_FROM,
       to,
       replyTo,
-      subject: encodeHeaderUtf8(MAIL_SUBJECT),
+      subject: encodeHeaderUtf8(mailSubject(brand, storeName)),
       content:
-        "안녕하십니까, 주식회사 이랜드이츠입니다.\n\n" +
-        "첨부된 결과물 하자 개선 요청서를 확인하여 주시기 바랍니다.\n\n" +
-        "※ 본 메일은 발신 전용 주소에서 자동 발송되었으며, 이 주소로는 회신을 받지 않습니다.\n" +
-        `   문의 및 회신은 담당 매장(${storeName} ${managerName}, ${replyTo})으로 보내 주시기 바랍니다.`,
+        "안녕하세요, 주식회사 이랜드이츠입니다.\n\n" +
+        `첨부된 서류는 ${brand} ${storeName}에서 ${workDate}에 수행된 귀하의 업무상 하자에 대한 개선 요청서입니다.\n` +
+        "확인 후 계약에 따른 성실한 회신 및 개선 진행 바랍니다.\n\n" +
+        "※ 본 메일은 발신 전용 주소에서 자동 발송되었으며, 본 메일에 회신하거나 문의할 경우 " +
+        `담당 매장(${storeName} ${managerName}, ${replyTo})으로 전달됩니다.`,
       attachments: [
         {
           filename: fileName,

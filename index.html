@@ -79,6 +79,11 @@
   table.list tr:last-child td{border-bottom:none;}
   .table-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch;}
   .table-scroll table.list td{white-space:nowrap;}
+  .filter-box{background:#f6f8fb; border:1px solid var(--border); border-radius:10px; padding:4px 12px 10px; margin-bottom:10px;}
+  .filter-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 10px;}
+  .filter-grid label{margin-top:8px;}
+  .filter-grid select,.filter-grid input{padding:8px 10px; font-size:14px; background:#fff;}
+  .filter-foot{display:flex; justify-content:space-between; align-items:center; margin-top:10px;}
   body:not(.is-master) .master-only{display:none !important;}
   body.is-master .viewer-only{display:none !important;}
   .code-box{
@@ -95,7 +100,7 @@
   }
   .status{display:inline-block; padding:3px 9px; border-radius:10px; font-size:11px; font-weight:700;}
   .status.sent{background:#e3f7e8; color:#1e7e34;}
-  .status.pending{background:#fff4e0; color:#b06d00;}
+  .status.pending,.status.sending{background:#fff4e0; color:#b06d00;}
   .status.failed{background:#fde8e8; color:var(--danger);}
   #toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
@@ -126,7 +131,7 @@
   <div id="screen-entry" class="card">
     <h2>매장코드 입력</h2>
     <label>매장코드</label>
-    <input id="entryCode" placeholder="예: SF-0921 (대소문자 구분 없음)" autocomplete="off" autocapitalize="characters">
+    <input id="entryCode" placeholder="예: AL000 (대소문자 구분 없음)" autocomplete="off" autocapitalize="characters">
     <button onclick="enterStore()">접속</button>
     <button class="secondary" onclick="openStoreRegister()">매장코드 신규 발급</button>
     <div style="margin-top:16px; text-align:center;">
@@ -197,7 +202,7 @@
     <label>매장 담당자 이메일</label>
     <input id="newManagerEmail" type="email">
     <label>매장코드 (영문/숫자/하이픈 3~20자, 미입력시 자동생성)</label>
-    <input id="newStoreCode" placeholder="예: BUCHEON01" autocomplete="off">
+    <input id="newStoreCode" placeholder="예: AL000" autocomplete="off" autocapitalize="characters">
     <button id="createStoreBtn" onclick="createStore()">발급</button>
     <div class="notice">매장코드는 매장 접속용 비밀번호로 사용되므로 매장 내부에서만 공유해 주시기 바랍니다. 매장코드를 분실하신 경우 관리자에게 문의해 주십시오.</div>
   </div>
@@ -264,7 +269,28 @@
   <!-- ================= 관리자: 전체 발송 이력 ================= -->
   <div id="screen-admin-history" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">전체 발송 이력</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
-    <button class="secondary" id="excelBtn" onclick="downloadHistoryExcel()" style="margin:0 0 8px;">엑셀 다운로드 (.xlsx)</button>
+    <div class="filter-box">
+      <div class="filter-grid">
+        <div><label>매장</label><select id="filterStore" onchange="renderAllHistory()"></select></div>
+        <div><label>수급사</label><select id="filterSub" onchange="renderAllHistory()"></select></div>
+        <div><label>상태</label>
+          <select id="filterStatus" onchange="renderAllHistory()">
+            <option value="">전체</option>
+            <option value="sent">발송완료</option>
+            <option value="failed">발송실패</option>
+            <option value="pending">대기중</option>
+          </select>
+        </div>
+        <div></div>
+        <div><label>수행일자 (부터)</label><input id="filterFrom" type="date" onchange="renderAllHistory()"></div>
+        <div><label>수행일자 (까지)</label><input id="filterTo" type="date" onchange="renderAllHistory()"></div>
+      </div>
+      <div class="filter-foot">
+        <span class="muted" id="filterCount"></span>
+        <span class="link" onclick="resetHistoryFilter()">조건 초기화</span>
+      </div>
+    </div>
+    <button class="secondary" id="excelBtn" onclick="downloadHistoryExcel()" style="margin:0 0 8px;">엑셀 다운로드 (현재 조건, .xlsx)</button>
     <div class="table-scroll">
       <table class="list" id="adminHistoryTable">
         <thead><tr><th>매장</th><th>수급사</th><th>수행일자</th><th>상태</th><th></th><th class="master-only"></th></tr></thead>
@@ -679,11 +705,62 @@ async function saveSub(){
 async function loadAllHistory(){
   const tbody = document.querySelector('#adminHistoryTable tbody');
   tbody.innerHTML = `<tr><td colspan="6">불러오는 중입니다...</td></tr>`;
+  document.getElementById('filterCount').textContent = '';
   try{
     ({ submissions: adminSubmissions } = await callAdminAction('list_submissions'));
   }catch(e){ tbody.innerHTML = `<tr><td colspan="6">조회에 실패했습니다.</td></tr>`; return; }
+  fillHistoryFilterOptions();
+  renderAllHistory();
+}
+
+// 매장/수급사 선택지는 이력에 실제로 등장하는 값으로 구성 (선택값은 새로고침 후에도 유지)
+function fillHistoryFilterOptions(){
+  const fill = (id, entries)=>{
+    const sel = document.getElementById(id);
+    const prev = sel.value;
+    const sorted = [...entries].sort((a,b)=>a[1].localeCompare(b[1], 'ko'));
+    sel.innerHTML = `<option value="">전체</option>` +
+      sorted.map(([v, label])=>`<option value="${v}">${escapeHtml(label)}</option>`).join('');
+    sel.value = entries.has(prev) ? prev : '';
+  };
+  const stores = new Map(), subs = new Map();
+  adminSubmissions.forEach(r=>{
+    if(r.stores) stores.set(r.store_id, `${r.stores.brand} (${r.stores.store_name})`);
+    if(r.subcontractors) subs.set(r.subcontractor_id, r.subcontractors.company_name);
+  });
+  fill('filterStore', stores);
+  fill('filterSub', subs);
+}
+
+function getFilteredHistory(list){
+  const store = document.getElementById('filterStore').value;
+  const sub = document.getElementById('filterSub').value;
+  const status = document.getElementById('filterStatus').value;
+  const from = document.getElementById('filterFrom').value;
+  const to = document.getElementById('filterTo').value;
+  return list.filter(r=>
+    (!store || r.store_id === store) &&
+    (!sub || r.subcontractor_id === sub) &&
+    // '대기중'에는 발송 처리 중인 건도 포함
+    (!status || (status === 'pending' ? ['pending','sending'].includes(r.email_status) : r.email_status === status)) &&
+    (!from || r.work_date >= from) &&
+    (!to || r.work_date <= to)
+  );
+}
+
+function resetHistoryFilter(){
+  ['filterStore','filterSub','filterStatus','filterFrom','filterTo'].forEach(id=>document.getElementById(id).value='');
+  renderAllHistory();
+}
+
+function renderAllHistory(){
+  const tbody = document.querySelector('#adminHistoryTable tbody');
+  const list = getFilteredHistory(adminSubmissions);
+  document.getElementById('filterCount').textContent =
+    list.length === adminSubmissions.length ? `전체 ${list.length}건` : `${list.length}건 / 전체 ${adminSubmissions.length}건`;
   if(!adminSubmissions.length){ tbody.innerHTML = `<tr><td colspan="6">발송 이력이 없습니다.</td></tr>`; return; }
-  tbody.innerHTML = adminSubmissions.map(r=>{
+  if(!list.length){ tbody.innerHTML = `<tr><td colspan="6">조건에 맞는 발송 이력이 없습니다.</td></tr>`; return; }
+  tbody.innerHTML = list.map(r=>{
     const storeLabel = r.stores ? `${r.stores.brand} (${r.stores.store_name})` : '-';
     return `<tr>
       <td>${escapeHtml(storeLabel)}</td>
@@ -747,7 +824,8 @@ async function downloadHistoryExcel(){
   btn.disabled = true;
   try{
     // 화면을 열어둔 사이 새로 들어온 건까지 포함되도록 다시 조회
-    const { submissions } = await callAdminAction('list_submissions');
+    const { submissions: all } = await callAdminAction('list_submissions');
+    const submissions = getFilteredHistory(all); // 화면에서 선택한 조건 그대로 적용
     if(!submissions.length){ toast('다운로드할 발송 이력이 없습니다.'); return; }
 
     const rows = submissions.map((r, i)=>({
