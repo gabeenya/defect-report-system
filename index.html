@@ -138,7 +138,9 @@
     <button onclick="enterStore()">접속</button>
     <button class="secondary" onclick="openStoreRegister()">매장코드 신규 발급</button>
     <div style="margin-top:16px; text-align:center;">
-      <span class="link" onclick="showScreen('admin-login')">관리자 화면 (매장목록/수급사/발송이력)</span>
+      <a class="link" href="guide.html">📖 사용 설명서</a>
+      <span class="muted" style="margin:0 6px;">|</span>
+      <span class="link" onclick="showScreen('admin-login')">관리자 화면</span>
     </div>
   </div>
 
@@ -172,6 +174,7 @@
     <button class="secondary" onclick="loadSubList(); showScreen('admin-sub')">수급사 관리</button>
     <button class="secondary" onclick="loadAllHistory(); showScreen('admin-history')">전체 발송 이력</button>
     <button class="secondary master-only" onclick="loadAdminList(); showScreen('admin-accounts')">관리자 계정 관리</button>
+    <div style="margin-top:14px; text-align:center;"><a class="link" href="guide.html#admin" target="_blank" rel="noopener">📖 관리자 사용 설명서</a></div>
     <div class="notice viewer-only">일반 관리자 계정은 조회 및 엑셀 다운로드만 가능합니다. 매장코드·수급사·발송 이력 수정은 마스터 관리자에게 요청해 주십시오.</div>
   </div>
 
@@ -332,6 +335,7 @@
     <h2>메뉴</h2>
     <button onclick="openReportForm()">하자개선요청서 작성</button>
     <button class="secondary" onclick="loadHistory(); showScreen('store-history')">발송 이력</button>
+    <div style="margin-top:14px; text-align:center;"><a class="link" href="guide.html#store" target="_blank" rel="noopener">📖 사용 설명서</a></div>
   </div>
 
   <!-- ================= 하자 작성 폼 ================= -->

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>사용 설명서 | 결과물 하자 개선 요청서 시스템</title>
+<meta name="description" content="결과물 하자 개선 요청서 시스템 사용 설명서">
+<meta name="theme-color" content="#102a4c">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2064%2064'%3E%3Crect%20width%3D'64'%20height%3D'64'%20rx%3D'14'%20fill%3D'%23102a4c'%2F%3E%3Cpath%20d%3D'M19%2013h27v8H28v8.5h-9zM19%2034.5h9V43h18v8H19z'%20fill%3D'%23fff'%2F%3E%3Cpath%20d%3D'M19%2028h22v8H19z'%20fill%3D'%23b08d3f'%2F%3E%3C%2Fsvg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --primary:#102a4c; --primary-light:#1d3f6e; --accent:#b08d3f;
+    --bg:#eef1f5; --card:#ffffff; --border:#dfe3ea;
+    --danger:#c0392b; --text:#1c2430; --muted:#707a89;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    font-family:'Noto Sans KR',-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;
+    background:var(--bg); margin:0; color:var(--text); line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  header{
+    background:linear-gradient(135deg,var(--primary),var(--primary-light));
+    color:#fff; padding:calc(18px + env(safe-area-inset-top)) 20px 16px; border-bottom:3px solid var(--accent);
+    display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  }
+  header .company{font-size:11px; letter-spacing:.06em; opacity:.75; font-weight:500;}
+  header .title{font-size:17px; font-weight:700; margin-top:2px;}
+  header .sub{font-size:12px; opacity:.85; margin-top:4px;}
+  header a{color:#fff; opacity:.9; font-size:13px; white-space:nowrap;}
+  .wrap{max-width:720px; margin:0 auto; padding:18px 16px 48px;}
+  nav.toc{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;}
+  nav.toc a{
+    flex:1; min-width:100px; text-align:center; padding:11px 8px; border-radius:8px;
+    background:var(--card); border:1px solid var(--border); color:var(--primary);
+    font-weight:700; font-size:14px; text-decoration:none;
+  }
+  nav.toc a:hover{background:#f3f5f8;}
+  section{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:20px; margin-bottom:16px; box-shadow:0 2px 10px rgba(16,42,76,.06);
+    scroll-margin-top:12px;
+  }
+  h1{font-size:18px; color:var(--primary); margin:0 0 6px;}
+  .lead{color:var(--muted); font-size:13.5px; margin:0 0 14px;}
+  details{border-top:1px solid var(--border);}
+  details:last-of-type{border-bottom:1px solid var(--border);}
+  summary{
+    cursor:pointer; padding:13px 2px; font-weight:700; font-size:15px; list-style:none;
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+  }
+  summary::-webkit-details-marker{display:none;}
+  summary::after{content:'+'; color:var(--accent); font-size:20px; font-weight:400; line-height:1;}
+  details[open] summary::after{content:'−';}
+  .body{padding:0 2px 16px; font-size:14px;}
+  .body p{margin:0 0 10px;}
+  ol,ul{margin:0 0 10px; padding-left:20px;}
+  li{margin-bottom:5px;}
+  b.btn{
+    display:inline-block; padding:0 7px; border-radius:5px; background:#f0f2f6;
+    border:1px solid var(--border); font-weight:700; font-size:13px; color:var(--primary);
+  }
+  .tip,.warn{
+    border-radius:8px; padding:10px 12px; font-size:13px; margin:8px 0 10px;
+    border-left:3px solid var(--accent); background:#f8f5ee;
+  }
+  .warn{border-left-color:var(--danger); background:#fdf1f0;}
+  table{width:100%; border-collapse:collapse; font-size:13px; margin:6px 0 10px;}
+  th,td{border:1px solid var(--border); padding:8px; text-align:left; vertical-align:top;}
+  th{background:#f3f5f9; color:var(--muted); font-weight:600;}
+  .status{display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:700; white-space:nowrap;}
+  .status.sent{background:#e3f7e8; color:#1e7e34;}
+  .status.pending{background:#fff4e0; color:#b06d00;}
+  .status.failed{background:#fde8e8; color:var(--danger);}
+  .back{
+    display:block; text-align:center; padding:13px; border-radius:8px; background:var(--primary);
+    color:#fff; font-weight:700; text-decoration:none; margin-top:8px;
+  }
+  footer{text-align:center; color:var(--muted); font-size:12px; margin-top:20px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="company">주식회사 이랜드이츠</div>
+    <div class="title">결과물 하자 개선 요청서</div>
+    <div class="sub">사용 설명서</div>
+  </div>
+  <a href="./">← 시스템으로</a>
+</header>
+
+<div class="wrap">
+
+  <nav class="toc">
+    <a href="#store">매장 사용자</a>
+    <a href="#admin">관리자</a>
+    <a href="#faq">자주 묻는 질문</a>
+  </nav>
+
+  <!-- ===================== 매장 사용자 ===================== -->
+  <section id="store">
+    <h1>매장 사용자 안내</h1>
+    <p class="lead">하자 개선이 필요한 결과물이 있을 때, 수급사(협력업체)에 요청서를 작성해 메일로 보내는 방법입니다.</p>
+
+    <details open>
+      <summary>1. 처음 사용할 때 — 매장코드 발급</summary>
+      <div class="body">
+        <p>매장코드는 우리 매장 전용 접속 코드입니다. 매장당 한 번만 발급하면 됩니다.</p>
+        <ol>
+          <li>첫 화면에서 <b class="btn">매장코드 신규 발급</b>을 누릅니다.</li>
+          <li>브랜드, 매장명, 매장 담당자명, 담당자 이메일을 입력합니다.
+            <ul><li>담당자 이메일은 <b>회사 이메일(@eland.co.kr)</b>만 사용할 수 있습니다. 수급사의 회신이 이 주소로 전달됩니다.</li></ul>
+          </li>
+          <li>매장코드는 직접 정하거나(영문·숫자·하이픈 5~20자), 비워두면 자동으로 만들어집니다.</li>
+          <li><b class="btn">발급</b>을 누르면 매장코드가 크게 표시됩니다. <b>반드시 기록해 두세요.</b></li>
+          <li><b class="btn">이 코드로 바로 접속</b>을 누르면 바로 사용할 수 있습니다.</li>
+        </ol>
+        <div class="warn">매장코드는 매장 접속 비밀번호와 같습니다. 매장 내부에서만 공유하고 외부(수급사 포함)에 알려주지 마세요.</div>
+      </div>
+    </details>
+
+    <details>
+      <summary>2. 접속하기</summary>
+      <div class="body">
+        <ol>
+          <li>첫 화면의 <b>매장코드</b> 칸에 코드를 입력하고 <b class="btn">접속</b>을 누릅니다. 대·소문자는 구분하지 않습니다.</li>
+          <li>화면 위쪽에 우리 매장 이름이 표시되면 접속된 것입니다.</li>
+        </ol>
+        <div class="tip">사용을 마치면 오른쪽 위 <b>나가기</b>를 눌러 주세요. 30분 동안 사용하지 않으면 자동으로 나가집니다.</div>
+        <p>코드를 여러 번 틀리면 보안을 위해 15분 동안 접속이 제한됩니다. 코드를 잊었다면 관리자에게 문의하세요.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>3. 하자개선요청서 작성·발송</summary>
+      <div class="body">
+        <ol>
+          <li>메뉴에서 <b class="btn">하자개선요청서 작성</b>을 누릅니다.</li>
+          <li><b>수급사 선택</b>: 요청을 보낼 업체를 고릅니다. 아래에 현장대리인과 수신 이메일이 표시됩니다.</li>
+          <li><b>수행일자</b>: 해당 업무가 수행된 날짜를 고릅니다. (기본값: 오늘)</li>
+          <li><b>수행장소</b>는 우리 매장으로 자동 입력됩니다.</li>
+          <li><b>수행작업</b>(예: 샐러드바 청소)과 <b>하자 개선 요청사항</b>을 구체적으로 적습니다.</li>
+          <li><b>사진 첨부</b>(최대 5장): <b class="btn">사진 촬영</b>으로 바로 찍거나 <b class="btn">앨범에서 선택</b>으로 저장된 사진을 고릅니다. 사진의 × 를 누르면 뺄 수 있습니다.</li>
+          <li><b class="btn">요청서 생성 및 발송</b>을 누릅니다.</li>
+        </ol>
+        <p>요청서(PDF)가 자동으로 만들어져 수급사에 메일로 발송됩니다. 완료되면 "메일로 발송되었습니다" 안내가 나옵니다.</p>
+        <table>
+          <tr><th style="width:30%">메일 제목</th><td>[브랜드][매장명] 하자개선요청서</td></tr>
+          <tr><th>첨부</th><td>하자개선 요청서 PDF (입력 내용 + 사진)</td></tr>
+          <tr><th>수급사 회신</th><td>발신 주소가 아닌 <b>매장 담당자 이메일</b>로 전달됩니다.</td></tr>
+        </table>
+        <div class="tip"><b>매핑 정보 수정</b>을 누르면 요청서에 표시될 수급인 회사명·현장대리인명을 이번 건에 한해 고칠 수 있습니다. 수신 이메일 변경은 관리자에게 요청하세요.</div>
+        <p>사진은 개인정보 보호를 위해 촬영 위치 등 부가 정보를 지우고 크기를 줄여 저장합니다.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>4. 발송 이력 확인</summary>
+      <div class="body">
+        <p>메뉴의 <b class="btn">발송 이력</b>에서 우리 매장이 보낸 요청서만 확인할 수 있습니다. <b>문서</b>를 누르면 발송된 PDF가 열립니다.</p>
+        <table>
+          <tr><th style="width:30%">상태</th><th>의미</th></tr>
+          <tr><td><span class="status sent">발송완료</span></td><td>수급사에 메일이 정상 발송됨</td></tr>
+          <tr><td><span class="status failed">발송실패</span></td><td>요청서는 저장됐으나 메일이 나가지 못함 → 관리자에게 문의</td></tr>
+          <tr><td><span class="status pending">대기중·발송중</span></td><td>발송 처리 중</td></tr>
+        </table>
+      </div>
+    </details>
+
+    <details>
+      <summary>5. 휴대폰에 앱처럼 설치하기</summary>
+      <div class="body">
+        <p>홈 화면에 추가하면 주소 입력 없이 앱처럼 바로 실행할 수 있습니다.</p>
+        <ul>
+          <li><b>아이폰(Safari)</b>: 화면 하단 공유 버튼(□↑) → <b>홈 화면에 추가</b> → <b>추가</b></li>
+          <li><b>안드로이드(Chrome·삼성 인터넷)</b>: 첫 화면의 <b class="btn">홈 화면에 설치</b> 버튼, 또는 브라우저 메뉴(⋮ / ≡) → <b>홈 화면에 추가</b>·<b>앱 설치</b></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===================== 관리자 ===================== -->
+  <section id="admin">
+    <h1>관리자 안내</h1>
+    <p class="lead">첫 화면 아래쪽 <b>관리자 화면</b> 링크에서 아이디와 비밀번호로 로그인합니다.</p>
+
+    <details open>
+      <summary>권한 구분</summary>
+      <div class="body">
+        <table>
+          <tr><th style="width:36%">기능</th><th>마스터 관리자</th><th>일반 관리자</th></tr>
+          <tr><td>매장·수급사·발송 이력 조회</td><td>가능</td><td>가능</td></tr>
+          <tr><td>발송 이력 엑셀 다운로드</td><td>가능</td><td>가능</td></tr>
+          <tr><td>매장 정보·매장코드 수정</td><td>가능</td><td>불가</td></tr>
+          <tr><td>수급사 추가·수정</td><td>가능</td><td>불가</td></tr>
+          <tr><td>발송 이력 수정</td><td>가능</td><td>불가</td></tr>
+          <tr><td>관리자 계정 추가·삭제</td><td>가능</td><td>불가</td></tr>
+        </table>
+        <p>로그인 후 관리자 메뉴 상단에 내 계정과 권한이 표시됩니다.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>전체 매장코드 목록</summary>
+      <div class="body">
+        <p>모든 매장의 코드, 매장명, 브랜드, 담당자, 이메일, 생성일을 볼 수 있습니다. 매장이 코드를 잊었을 때 여기서 확인해 안내합니다.</p>
+        <p><b>[마스터]</b> 각 행의 <b>수정</b>에서 매장코드·브랜드·매장명·담당자 정보를 바꿀 수 있습니다.</p>
+        <ul>
+          <li>매장코드를 바꾸면 해당 매장은 새 코드로만 접속할 수 있으니 반드시 매장에 알려주세요.</li>
+          <li>코드 유출이 의심되면 새 코드로 바꿔 주세요.</li>
+          <li>담당자 이메일은 회사 이메일만 가능합니다. 회사 이메일이 아닌 매장은 메일이 발송되지 않습니다.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>수급사 관리</summary>
+      <div class="body">
+        <p>요청서를 받을 수급사(협력업체) 목록입니다. 매장의 수급사 선택 목록에 그대로 표시됩니다.</p>
+        <p><b>[마스터]</b> <b class="btn">+ 수급사 추가</b> 또는 각 행의 <b>수정</b>에서 업체명, 현장대리인명, 수신 이메일을 등록·변경합니다.</p>
+        <div class="tip">수급사 현장대리인의 성명·이메일은 개인정보입니다. 등록 전 개인정보 수집·이용 동의서를 받아 주세요.</div>
+      </div>
+    </details>
+
+    <details>
+      <summary>전체 발송 이력 · 엑셀 다운로드</summary>
+      <div class="body">
+        <ol>
+          <li><b>조건 선택</b>: 매장, 수급사, 상태, 수행일자(부터~까지)를 골라 원하는 건만 볼 수 있습니다. <b>조건 초기화</b>로 전체 보기.</li>
+          <li><b class="btn">엑셀 다운로드</b>: <b>현재 선택한 조건 그대로</b> 엑셀(.xlsx)로 받습니다. 제출일시, 매장, 수급사, 수행 내용, 발송상태, 실패사유가 포함됩니다.</li>
+          <li><b>문서</b>: 발송된 요청서 PDF를 엽니다.</li>
+        </ol>
+        <p><b>[마스터]</b> <b>수정</b>에서 수급사, 수행일자·장소·작업, 요청사항, 발송상태를 정정할 수 있습니다. 이력 정보만 바뀌며 <b>이미 발송된 메일과 PDF는 바뀌지 않습니다.</b></p>
+      </div>
+    </details>
+
+    <details>
+      <summary>관리자 계정 관리 (마스터)</summary>
+      <div class="body">
+        <ol>
+          <li>관리자 메뉴의 <b class="btn">관리자 계정 관리</b>를 누릅니다.</li>
+          <li>아이디(영문·숫자 3~30자), 이름, 비밀번호(8자 이상)를 입력하고 <b class="btn">관리자 추가</b>를 누릅니다.</li>
+          <li>퇴사·이동 등으로 필요 없어진 계정은 목록에서 <b>삭제</b>합니다.</li>
+        </ol>
+        <p>추가된 계정은 일반 관리자(조회·엑셀 전용)입니다.</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- ===================== FAQ ===================== -->
+  <section id="faq">
+    <h1>자주 묻는 질문</h1>
+
+    <details>
+      <summary>매장코드를 잊어버렸어요.</summary>
+      <div class="body"><p>관리자에게 문의하면 매장코드 목록에서 확인해 알려드립니다.</p></div>
+    </details>
+
+    <details>
+      <summary>"로그인 시도가 너무 많습니다"라고 나와요.</summary>
+      <div class="body"><p>매장코드나 관리자 비밀번호를 여러 번 틀리면 보안을 위해 15분 동안 제한됩니다. 15분 후 정확한 코드로 다시 시도하세요.</p></div>
+    </details>
+
+    <details>
+      <summary>"회사 이메일만 사용할 수 있습니다"라고 나와요.</summary>
+      <div class="body"><p>매장 담당자 이메일은 회사 이메일(@eland.co.kr)만 등록할 수 있습니다. 수급사 회신이 외부 주소로 새는 것을 막기 위한 보안 조치입니다.</p></div>
+    </details>
+
+    <details>
+      <summary>발송 상태가 "발송실패"예요.</summary>
+      <div class="body">
+        <p>요청서는 저장되어 있으니 관리자에게 알려 주세요.</p>
+        <p><b>관리자</b>: 전체 발송 이력 → 엑셀 다운로드의 <b>실패사유</b> 칸에서 원인을 확인할 수 있습니다. 매장 담당자 이메일이 회사 이메일이 아니라면 매장 정보를 수정한 뒤 다시 작성하도록 안내하세요.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>보내려는 수급사가 목록에 없어요.</summary>
+      <div class="body"><p>관리자(마스터)에게 수급사 등록을 요청하세요.</p></div>
+    </details>
+
+    <details>
+      <summary>문서를 눌러도 PDF가 안 열려요.</summary>
+      <div class="body"><p>브라우저가 새 창(팝업)을 막았을 수 있습니다. 주소창의 팝업 차단 알림에서 이 사이트를 허용한 뒤 다시 눌러 주세요.</p></div>
+    </details>
+
+    <details>
+      <summary>사진이 첨부되지 않아요.</summary>
+      <div class="body"><p>일부 특수 형식의 사진은 불러오지 못할 수 있습니다. 다른 사진을 선택하거나 <b>사진 촬영</b>으로 다시 찍어 주세요. 최대 5장까지 첨부할 수 있습니다.</p></div>
+    </details>
+
+    <details>
+      <summary>화면이 예전 모습 그대로예요.</summary>
+      <div class="body"><p>PC는 <b>Ctrl + F5</b>, 휴대폰은 페이지를 새로고침하세요. 앱으로 설치했다면 앱을 완전히 종료했다가 다시 실행하세요.</p></div>
+    </details>
+  </section>
+
+  <section>
+    <h1>꼭 지켜 주세요</h1>
+    <ul>
+      <li>매장코드와 관리자 비밀번호는 외부에 공유하지 마세요.</li>
+      <li>공용 기기에서는 사용 후 반드시 <b>나가기</b>를 눌러 주세요.</li>
+      <li>요청서에는 업무와 관련된 내용·사진만 첨부하고, 사람 얼굴 등 불필요한 개인정보가 찍히지 않도록 주의하세요.</li>
+    </ul>
+    <a class="back" href="./">시스템으로 돌아가기</a>
+  </section>
+
+  <footer>주식회사 이랜드이츠 · 결과물 하자 개선 요청서 시스템</footer>
+</div>
+
+</body>
+</html>
