@@ -10,6 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --primary:#102a4c; --primary-light:#1d3f6e; --accent:#b08d3f;
@@ -66,6 +67,12 @@
   }
   table.list td{border-bottom:1px solid var(--border); padding:9px 8px; text-align:left;}
   table.list tr:last-child td{border-bottom:none;}
+  .table-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+  .table-scroll table.list td{white-space:nowrap;}
+  .code-box{
+    margin-top:14px; padding:16px; text-align:center; border:2px dashed var(--accent);
+    border-radius:10px; font-size:22px; font-weight:900; letter-spacing:.06em; color:var(--primary);
+  }
   .photo-grid{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
   .photo-thumb{position:relative; width:72px; height:72px;}
   .photo-thumb img{width:100%; height:100%; object-fit:cover; border-radius:6px; border:1px solid var(--border);}
@@ -109,8 +116,9 @@
     <label>매장코드</label>
     <input id="entryCode" placeholder="예: SF-0921" autocomplete="off">
     <button onclick="enterStore()">접속</button>
+    <button class="secondary" onclick="openStoreRegister()">매장코드가 없어요 · 새로 만들기</button>
     <div style="margin-top:16px; text-align:center;">
-      <span class="link" onclick="showScreen('admin-login')">관리자 화면 (매장코드/수급사 관리)</span>
+      <span class="link" onclick="showScreen('admin-login')">관리자 화면 (매장목록/수급사/발송이력)</span>
     </div>
   </div>
 
@@ -128,15 +136,14 @@
   <!-- ================= 관리자 메뉴 ================= -->
   <div id="screen-admin" class="card hidden">
     <h2>관리자 메뉴</h2>
-    <button onclick="showScreen('admin-store-new')">매장코드 생성</button>
-    <button class="secondary" onclick="loadStoreList(); showScreen('admin-store-list')">매장 목록</button>
+    <button onclick="loadStoreList(); showScreen('admin-store-list')">전체 매장코드 목록</button>
     <button class="secondary" onclick="loadSubList(); showScreen('admin-sub')">수급사 관리</button>
     <button class="secondary" onclick="loadAllHistory(); showScreen('admin-history')">전체 발송 이력</button>
   </div>
 
-  <!-- ================= 매장코드 생성 ================= -->
-  <div id="screen-admin-store-new" class="card hidden">
-    <div class="topbar"><h2 style="margin:0;">매장코드 생성</h2><span class="link" onclick="showScreen('admin')">메뉴로</span></div>
+  <!-- ================= 매장코드 생성 (매장 사용자) ================= -->
+  <div id="screen-store-register" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">매장코드 만들기</h2><span class="link" onclick="showScreen('entry')">뒤로</span></div>
     <label>브랜드</label>
     <select id="newBrand"></select>
     <label>매장명</label>
@@ -145,18 +152,29 @@
     <input id="newManagerName">
     <label>매장 담당자 이메일</label>
     <input id="newManagerEmail" type="email">
-    <label>매장코드 (직접 지정, 미입력시 자동생성)</label>
-    <input id="newStoreCode" placeholder="예: BUCHEON01">
-    <button onclick="createStore()">생성</button>
+    <label>매장코드 (영문/숫자/하이픈 3~20자, 미입력시 자동생성)</label>
+    <input id="newStoreCode" placeholder="예: BUCHEON01" autocomplete="off">
+    <button id="createStoreBtn" onclick="createStore()">생성</button>
+    <div class="notice">매장코드는 매장 접속용 비밀번호처럼 쓰이니 매장 내부에서만 공유해줘. 잊어버리면 관리자에게 문의하면 확인할 수 있어.</div>
+  </div>
+
+  <div id="screen-store-register-done" class="card hidden">
+    <h2>매장코드 생성 완료</h2>
+    <div class="muted" id="registeredStoreLabel"></div>
+    <div class="code-box" id="registeredStoreCode"></div>
+    <div class="notice">이 코드를 꼭 메모해둬. 다음부터 이 코드로 접속하면 돼.</div>
+    <button onclick="enterRegisteredStore()">이 코드로 바로 접속</button>
   </div>
 
   <!-- ================= 매장 목록 ================= -->
   <div id="screen-admin-store-list" class="card hidden">
-    <div class="topbar"><h2 style="margin:0;">매장 목록</h2><span class="link" onclick="showScreen('admin')">메뉴로</span></div>
-    <table class="list" id="storeListTable">
-      <thead><tr><th>코드</th><th>매장명</th><th>브랜드</th><th>담당자</th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <div class="topbar"><h2 style="margin:0;">전체 매장코드 목록</h2><span class="link" onclick="showScreen('admin')">메뉴로</span></div>
+    <div class="table-scroll">
+      <table class="list" id="storeListTable">
+        <thead><tr><th>코드</th><th>매장명</th><th>브랜드</th><th>담당자</th><th>이메일</th><th>생성일</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- ================= 수급사 관리 ================= -->
@@ -184,6 +202,7 @@
   <!-- ================= 관리자: 전체 발송 이력 ================= -->
   <div id="screen-admin-history" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">전체 발송 이력</h2><span class="link" onclick="showScreen('admin')">메뉴로</span></div>
+    <button class="secondary" id="excelBtn" onclick="downloadHistoryExcel()" style="margin:0 0 8px;">엑셀 다운로드 (.xlsx)</button>
     <table class="list" id="adminHistoryTable">
       <thead><tr><th>매장</th><th>수급사</th><th>수행일자</th><th>상태</th><th></th></tr></thead>
       <tbody></tbody>
@@ -266,6 +285,7 @@ let currentStore = null;   // {id, store_code, store_name, brand, manager_name, 
 let subcontractors = [];   // 캐시
 let selectedPhotos = [];   // File[]
 let adminPassword = null;  // 관리자 인증 후 메모리에만 보관 (Edge Function 검증용)
+let registeredStore = null; // 방금 생성한 매장 (바로 접속용)
 
 /* ============================================================
    공통 유틸
@@ -283,8 +303,14 @@ function todayStr(){
   const d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
-function genStoreCode(brand){
-  return (brand.slice(0,2) + '-' + Math.floor(1000+Math.random()*9000)).toUpperCase();
+function formatDateTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  const p = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function statusLabel(s){
+  return s==='sent' ? '발송완료' : s==='failed' ? '발송실패' : s==='sending' ? '발송중' : '대기중';
 }
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -296,10 +322,16 @@ function escapeHtml(s){
 async function enterStore(){
   const code = document.getElementById('entryCode').value.trim();
   if(!code){ toast('매장코드를 입력해줘'); return; }
-  const { data, error } = await sb.from('stores').select('*').eq('store_code', code).maybeSingle();
-  if(error || !data){ toast('존재하지 않는 매장코드야'); return; }
-  currentStore = data;
-  document.getElementById('storeBadge').textContent = `${data.brand} · ${data.store_name}`;
+  try{
+    const { store } = await callPublicAction('lookup_store', { store_code: code });
+    await openStore(store);
+  }catch(e){
+    toast(e.message || '존재하지 않는 매장코드야');
+  }
+}
+async function openStore(store){
+  currentStore = store;
+  document.getElementById('storeBadge').textContent = `${store.brand} · ${store.store_name}`;
   document.getElementById('logoutBtn').style.display='block';
   await loadSubcontractorsCache();
   showScreen('store-home');
@@ -321,6 +353,16 @@ async function callAdminAction(action, payload){
     method: 'POST',
     headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY},
     body: JSON.stringify({ action, password: adminPassword, payload })
+  });
+  if(!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+// 비밀번호 없이 호출 가능한 action (매장코드 생성/접속)
+async function callPublicAction(action, payload){
+  const res = await fetch(ADMIN_ACTION_URL, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY},
+    body: JSON.stringify({ action, payload })
   });
   if(!res.ok) throw new Error(await res.text());
   return res.json();
@@ -349,30 +391,54 @@ function initBrandSelect(){
 }
 initBrandSelect();
 
+/* ---- 매장코드 생성 (매장 사용자가 직접) ---- */
+function openStoreRegister(){
+  ['newStoreName','newManagerName','newManagerEmail','newStoreCode'].forEach(id=>document.getElementById(id).value='');
+  showScreen('store-register');
+}
+
 async function createStore(){
   const brand = document.getElementById('newBrand').value;
   const store_name = document.getElementById('newStoreName').value.trim();
   const manager_name = document.getElementById('newManagerName').value.trim();
   const manager_email = document.getElementById('newManagerEmail').value.trim();
-  let store_code = document.getElementById('newStoreCode').value.trim();
+  const store_code = document.getElementById('newStoreCode').value.trim().toUpperCase();
   if(!store_name || !manager_name || !manager_email){ toast('필수 항목을 모두 입력해줘'); return; }
-  if(!store_code) store_code = genStoreCode(brand);
+  if(store_code && !/^[A-Z0-9-]{3,20}$/.test(store_code)){ toast('매장코드는 영문/숫자/하이픈(-) 3~20자로 입력해줘'); return; }
 
+  const btn = document.getElementById('createStoreBtn');
+  btn.disabled = true;
   try{
-    await callAdminAction('create_store', { store_code, store_name, brand, manager_name, manager_email });
-  }catch(error){ toast('생성 실패: ' + error.message); return; }
-  toast(`매장코드 생성 완료: ${store_code}`);
-  document.getElementById('newStoreName').value='';
-  document.getElementById('newManagerName').value='';
-  document.getElementById('newManagerEmail').value='';
-  document.getElementById('newStoreCode').value='';
+    const { store } = await callPublicAction('register_store', { store_code, store_name, brand, manager_name, manager_email });
+    registeredStore = store;
+    document.getElementById('registeredStoreLabel').textContent = `${store.brand} · ${store.store_name}`;
+    document.getElementById('registeredStoreCode').textContent = store.store_code;
+    showScreen('store-register-done');
+  }catch(error){
+    toast('생성 실패: ' + error.message);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function enterRegisteredStore(){
+  if(!registeredStore) return;
+  document.getElementById('entryCode').value = registeredStore.store_code;
+  await openStore(registeredStore);
 }
 
 async function loadStoreList(){
-  const { data, error } = await sb.from('stores').select('*').order('created_at', {ascending:false});
   const tbody = document.querySelector('#storeListTable tbody');
-  if(error){ tbody.innerHTML = `<tr><td colspan="4">조회 실패</td></tr>`; return; }
-  tbody.innerHTML = data.map(s=>`<tr><td>${s.store_code}</td><td>${s.store_name}</td><td>${s.brand}</td><td>${s.manager_name}</td></tr>`).join('');
+  tbody.innerHTML = `<tr><td colspan="6">불러오는 중...</td></tr>`;
+  let stores;
+  try{
+    ({ stores } = await callAdminAction('list_stores'));
+  }catch(e){ tbody.innerHTML = `<tr><td colspan="6">조회 실패</td></tr>`; return; }
+  if(!stores.length){ tbody.innerHTML = `<tr><td colspan="6">등록된 매장이 없어</td></tr>`; return; }
+  tbody.innerHTML = stores.map(s=>`<tr>
+    <td><b>${escapeHtml(s.store_code)}</b></td><td>${escapeHtml(s.store_name)}</td><td>${escapeHtml(s.brand)}</td>
+    <td>${escapeHtml(s.manager_name)}</td><td>${escapeHtml(s.manager_email)}</td><td>${formatDateTime(s.created_at).slice(0,10)}</td>
+  </tr>`).join('');
 }
 
 /* ---- 수급사 관리 ---- */
@@ -417,23 +483,64 @@ async function saveSub(){
 
 /* ---- 관리자: 전체 발송 이력 ---- */
 async function loadAllHistory(){
-  const { data, error } = await sb
-    .from('submissions')
-    .select('*, stores(store_name, brand), subcontractors(company_name)')
-    .order('created_at', {ascending:false});
   const tbody = document.querySelector('#adminHistoryTable tbody');
-  if(error){ tbody.innerHTML = `<tr><td colspan="5">조회 실패</td></tr>`; return; }
-  tbody.innerHTML = data.map(r=>{
-    const label = r.email_status==='sent' ? '발송완료' : r.email_status==='failed' ? '발송실패' : '대기중';
+  tbody.innerHTML = `<tr><td colspan="5">불러오는 중...</td></tr>`;
+  let submissions;
+  try{
+    ({ submissions } = await callAdminAction('list_submissions'));
+  }catch(e){ tbody.innerHTML = `<tr><td colspan="5">조회 실패</td></tr>`; return; }
+  if(!submissions.length){ tbody.innerHTML = `<tr><td colspan="5">발송 이력이 없어</td></tr>`; return; }
+  tbody.innerHTML = submissions.map(r=>{
     const storeLabel = r.stores ? `${r.stores.brand} (${r.stores.store_name})` : '-';
     return `<tr>
-      <td>${storeLabel}</td>
-      <td>${r.subcontractors?.company_name || '-'}</td>
+      <td>${escapeHtml(storeLabel)}</td>
+      <td>${escapeHtml(r.subcontractors?.company_name || '-')}</td>
       <td>${r.work_date}</td>
-      <td><span class="status ${r.email_status}">${label}</span></td>
+      <td><span class="status ${r.email_status}">${statusLabel(r.email_status)}</span></td>
       <td>${r.document_url ? `<span class="link" onclick="downloadDoc('${r.document_url}')">문서</span>` : ''}</td>
     </tr>`;
   }).join('');
+}
+
+/* ---- 관리자: 발송 이력 엑셀 다운로드 ---- */
+async function downloadHistoryExcel(){
+  const btn = document.getElementById('excelBtn');
+  btn.disabled = true;
+  try{
+    // 화면을 열어둔 사이 새로 들어온 건까지 포함되도록 다시 조회
+    const { submissions } = await callAdminAction('list_submissions');
+    if(!submissions.length){ toast('다운로드할 발송 이력이 없어'); return; }
+
+    const rows = submissions.map((r, i)=>({
+      'No': i+1,
+      '제출일시': formatDateTime(r.created_at),
+      '매장코드': r.stores?.store_code || '',
+      '브랜드': r.stores?.brand || '',
+      '매장명': r.stores?.store_name || '',
+      '매장 담당자': r.stores?.manager_name || '',
+      '매장 담당자 이메일': r.stores?.manager_email || '',
+      '수급사': r.subcontractors?.company_name || '',
+      '현장대리인': r.subcontractors?.site_manager_name || '',
+      '수급사 이메일': r.subcontractors?.email || '',
+      '수행일자': r.work_date || '',
+      '수행장소': r.work_location || '',
+      '수행작업': r.work_type || '',
+      '하자 개선 요청사항': r.defect_description || '',
+      '사진 수': (r.photo_urls || []).length,
+      '발송상태': statusLabel(r.email_status),
+      '실패사유': r.email_error || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [6,17,13,13,22,12,24,18,12,24,12,24,18,40,8,10,30].map(wch=>({wch}));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '발송이력');
+    XLSX.writeFile(wb, `하자개선요청서_발송이력_${todayStr()}.xlsx`);
+  }catch(e){
+    toast('엑셀 다운로드 실패: ' + e.message);
+  }finally{
+    btn.disabled = false;
+  }
 }
 
 /* ============================================================
@@ -654,11 +761,10 @@ async function loadHistory(){
   const tbody = document.querySelector('#historyTable tbody');
   if(error){ tbody.innerHTML = `<tr><td colspan="4">조회 실패</td></tr>`; return; }
   tbody.innerHTML = data.map(r=>{
-    const label = r.email_status==='sent' ? '발송완료' : r.email_status==='failed' ? '발송실패' : '대기중';
     return `<tr>
       <td>${r.work_date}</td>
-      <td>${r.subcontractors?.company_name || '-'}</td>
-      <td><span class="status ${r.email_status}">${label}</span></td>
+      <td>${escapeHtml(r.subcontractors?.company_name || '-')}</td>
+      <td><span class="status ${r.email_status}">${statusLabel(r.email_status)}</span></td>
       <td>${r.document_url ? `<span class="link" onclick="downloadDoc('${r.document_url}')">문서</span>` : ''}</td>
     </tr>`;
   }).join('');

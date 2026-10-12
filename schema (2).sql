@@ -88,3 +88,14 @@ create policy "subcontractors_select" on subcontractors for select using (true);
 -- 이미 위 schema를 실행한 상태라면 이 블록만 SQL Editor에서 추가 실행.
 -- ============================================================
 drop policy if exists "submissions_update" on submissions;
+
+-- ============================================================
+-- [보안 패치 3] 매장코드 셀프 생성 + 매장 목록은 관리자만 조회
+-- 매장 사용자가 직접 매장코드를 만들 수 있게 되면서, 매장코드가 곧 접속 비밀번호 역할.
+-- anon key로 stores 전체를 select 하면 모든 매장코드가 노출되므로 차단하고,
+-- 매장 접속(코드 1건 조회)·매장코드 생성은 admin-action Edge Function의
+-- 공개 action(lookup_store / register_store)으로, 전체 목록은 관리자 action으로만 가능.
+-- ※ 반드시 admin-action 최신 버전을 먼저 배포한 뒤 이 블록을 실행할 것
+--   (먼저 실행하면 기존 화면에서 매장코드 접속이 안 됨)
+-- ============================================================
+drop policy if exists "stores_select" on stores;
