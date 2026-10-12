@@ -99,3 +99,20 @@ drop policy if exists "submissions_update" on submissions;
 --   (먼저 실행하면 기존 화면에서 매장코드 접속이 안 됨)
 -- ============================================================
 drop policy if exists "stores_select" on stores;
+
+-- ============================================================
+-- [추가 4] 일반 관리자 계정 테이블
+-- 마스터 관리자는 Edge Function Secrets(ADMIN_PASSWORD, 아이디 기본값 master)로 로그인.
+-- 일반 관리자 계정은 마스터가 관리자 화면에서 생성/삭제하며, 조회만 가능 (수정 권한 없음).
+-- 비밀번호는 PBKDF2 해시로만 저장. anon key로는 접근 불가 (정책 없음 = 전면 차단,
+-- admin-action Edge Function이 service role로만 접근).
+-- ============================================================
+create table if not exists admins (
+  id uuid primary key default gen_random_uuid(),
+  login_id text unique not null,
+  name text not null,
+  password_hash text not null,
+  password_salt text not null,
+  created_at timestamptz not null default now()
+);
+alter table admins enable row level security;

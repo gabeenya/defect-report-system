@@ -1,0 +1,17 @@
+{
+  "name": "결과물 하자 개선 요청서 | 이랜드이츠",
+  "short_name": "하자개선요청",
+  "description": "주식회사 이랜드이츠 결과물 하자 개선 요청서 작성·발송 시스템",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef1f5",
+  "theme_color": "#102a4c",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
