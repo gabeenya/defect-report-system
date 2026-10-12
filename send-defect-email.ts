@@ -18,10 +18,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
-const SMTP_HOST = Deno.env.get("SMTP_HOST")!;
-const SMTP_USER = Deno.env.get("SMTP_USER")!;
-const SMTP_PASSWORD = Deno.env.get("SMTP_PASSWORD")!;
-const SMTP_FROM = Deno.env.get("SMTP_FROM") || SMTP_USER;
+// Secrets 입력 시 앞뒤 공백이 섞여 들어가는 경우가 있어 trim
+const SMTP_HOST = (Deno.env.get("SMTP_HOST") ?? "").trim();
+const SMTP_USER = (Deno.env.get("SMTP_USER") ?? "").trim();
+const SMTP_PASSWORD = (Deno.env.get("SMTP_PASSWORD") ?? "").trim();
+const SMTP_FROM = (Deno.env.get("SMTP_FROM") ?? "").trim() || SMTP_USER;
 
 const MAIL_SUBJECT = "[이랜드이츠] 하자개선 요청서"; // 발송 메일 제목 고정값
 
@@ -43,6 +44,16 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
+}
+
+// 한글 제목을 RFC 2047 Base64 encoded-word로 직접 인코딩.
+// denomailer는 한글 제목을 Q 인코딩하면서 공백·줄바꿈을 그대로 넣어 수신측에서 제목이 깨짐.
+// 앞에 공백을 붙이면 denomailer가 ASCII 문자열로 보고 재인코딩하지 않음 (헤더 값 앞 공백은 무시됨).
+function encodeHeaderUtf8(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return " =?UTF-8?B?" + btoa(binary) + "?=";
 }
 
 function textResponse(body: string, status: number) {
@@ -73,7 +84,7 @@ Deno.serve(async (req) => {
     .update({ email_status: "sending" })
     .eq("id", submissionId)
     .eq("email_status", "pending")
-    .select("id, work_date, document_url, stores(manager_email), subcontractors(email)")
+    .select("id, work_date, document_url, stores(store_name, manager_name, manager_email), subcontractors(email)")
     .maybeSingle();
   if (claimErr) return textResponse("조회 실패: " + claimErr.message, 500);
   if (!claimed) return textResponse("발송 대기 상태인 요청서가 아님", 409);
@@ -85,6 +96,10 @@ Deno.serve(async (req) => {
     const replyTo: string | undefined = row.stores?.manager_email;
     const documentPath: string | undefined = row.document_url;
     if (!to || !documentPath) throw new Error("수신 이메일 또는 문서 정보 없음");
+    // 공용 발신 주소로 회신이 오지 않도록 Reply-To(매장 담당자)가 없으면 발송하지 않음
+    if (!replyTo) throw new Error("매장 담당자 이메일 없음 (회신 주소 미지정으로 발송 중단)");
+    const storeName: string = row.stores?.store_name || "";
+    const managerName: string = row.stores?.manager_name || "";
 
     // 2) Storage에서 문서 다운로드 (service role — 정책 우회)
     const { data: fileData, error: dlErr } = await supabaseAdmin
@@ -110,11 +125,13 @@ Deno.serve(async (req) => {
     await client.send({
       from: SMTP_FROM,
       to,
-      replyTo: replyTo || undefined,
-      subject: MAIL_SUBJECT,
+      replyTo,
+      subject: encodeHeaderUtf8(MAIL_SUBJECT),
       content:
-        "첨부된 결과물 하자 개선 요청서를 확인 부탁드립니다.\n\n" +
-        "본 메일은 시스템에서 자동 발송되었습니다. 회신은 담당 매장으로 발송됩니다.",
+        "안녕하십니까, 주식회사 이랜드이츠입니다.\n\n" +
+        "첨부된 결과물 하자 개선 요청서를 확인하여 주시기 바랍니다.\n\n" +
+        "※ 본 메일은 발신 전용 주소에서 자동 발송되었으며, 이 주소로는 회신을 받지 않습니다.\n" +
+        `   문의 및 회신은 담당 매장(${storeName} ${managerName}, ${replyTo})으로 보내 주시기 바랍니다.`,
       attachments: [
         {
           filename: fileName,
