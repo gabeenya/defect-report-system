@@ -16,7 +16,7 @@
 //   - 관리자 action (마스터 + 일반 관리자, 조회 전용):
 //       verify, list_stores, list_submissions, list_subcontractors, admin_doc_url
 //   - 마스터 전용 action (수정 권한):
-//       update_store, save_subcontractor, update_submission,
+//       update_store, bulk_create_stores(엑셀 일괄 생성), save_subcontractor, update_submission,
 //       list_admins, create_admin, delete_admin
 //
 // 로그인:
@@ -268,6 +268,67 @@ async function updateStore(payload: any) {
   if (error?.code === "23505") return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력해 주십시오.", 409);
   if (error) throw new Error(error.message);
   return json({ ok: true });
+}
+
+// 엑셀 일괄 생성: 모든 행을 먼저 검증하고, 하나라도 오류가 있으면 아무것도 만들지 않음 (행별 오류 반환)
+const BULK_MAX_ROWS = 300;
+// deno-lint-ignore no-explicit-any
+async function bulkCreateStores(payload: any) {
+  const input = Array.isArray(payload?.stores) ? payload.stores : [];
+  if (!input.length) return text("등록할 매장이 없습니다.", 400);
+  if (input.length > BULK_MAX_ROWS) return text(`한 번에 최대 ${BULK_MAX_ROWS}개 매장까지 등록할 수 있습니다.`, 400);
+
+  // 기존 코드는 대소문자 구분 없이 중복 검사 (한 번에 최대 1000건씩 조회되므로 나눠서 전부 가져옴)
+  const taken = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabaseAdmin.from("stores").select("store_code")
+      .order("id").range(from, from + 999);
+    if (error) throw new Error(error.message);
+    (data ?? []).forEach((r) => taken.add(String(r.store_code).toUpperCase()));
+    if (!data || data.length < 1000) break;
+  }
+
+  const errors: { row: number; message: string }[] = [];
+  const fileCodes = new Map<string, number>(); // 파일 안 중복 검사용 (코드 → 행 번호)
+  // deno-lint-ignore no-explicit-any
+  const rows = input.map((r: any, i: number) => {
+    const row = parseInt(r?.row) || i + 2;
+    const fields = {
+      brand: str(r?.brand),
+      store_name: str(r?.store_name),
+      manager_name: str(r?.manager_name),
+      manager_email: str(r?.manager_email),
+    };
+    const code = str(r?.store_code).toUpperCase();
+    const invalid = validateStoreFields(fields) ||
+      (code && !STORE_CODE_RE.test(code) ? STORE_CODE_RULE : null) ||
+      (code && taken.has(code) ? `이미 사용 중인 매장코드입니다. (${code})` : null) ||
+      (code && fileCodes.has(code) ? `파일 안에서 매장코드가 중복됩니다. (${fileCodes.get(code)}행과 같음)` : null);
+    if (invalid) errors.push({ row, message: invalid });
+    if (code && !fileCodes.has(code)) fileCodes.set(code, row);
+    return { code, fields };
+  });
+  if (errors.length) return json({ ok: false, errors });
+
+  // 자동생성 코드는 기존 코드·파일 내 코드와 겹치지 않게 발급
+  const used = new Set([...taken, ...fileCodes.keys()]);
+  const records = rows.map(({ code, fields }: { code: string; fields: Record<string, string> }) => {
+    let store_code = code;
+    if (!store_code) {
+      do store_code = genStoreCode(fields.brand); while (used.has(store_code));
+      used.add(store_code);
+    }
+    return { store_code, ...fields };
+  });
+
+  // 한 번의 insert = 전부 성공 또는 전부 실패
+  const { data, error } = await supabaseAdmin
+    .from("stores")
+    .insert(records)
+    .select("store_code, store_name, brand, manager_name, manager_email");
+  if (error?.code === "23505") return text("그사이 같은 매장코드가 등록되었습니다. 다시 업로드해 주십시오.", 409);
+  if (error) throw new Error(error.message);
+  return json({ ok: true, stores: data });
 }
 
 /* ---------------- 수급사 ---------------- */
@@ -551,6 +612,7 @@ async function handle(req: Request): Promise<Response> {
   // ---------- 마스터 전용 action ----------
   const MASTER_ACTIONS: Record<string, (p: unknown) => Promise<Response>> = {
     update_store: updateStore,
+    bulk_create_stores: bulkCreateStores,
     save_subcontractor: saveSubcontractor,
     update_submission: updateSubmission,
     list_admins: listAdmins,

@@ -225,11 +225,44 @@
   <!-- ================= 매장 목록 ================= -->
   <div id="screen-admin-store-list" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">전체 매장코드 목록</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
+    <button class="secondary master-only" onclick="openBulkStore()" style="margin:0 0 8px;">엑셀로 매장코드 일괄 생성</button>
     <div class="table-scroll">
       <table class="list" id="storeListTable">
         <thead><tr><th>코드</th><th>매장명</th><th>브랜드</th><th>담당자</th><th>이메일</th><th>생성일</th><th class="master-only"></th></tr></thead>
         <tbody></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- ================= 매장코드 엑셀 일괄 생성 (마스터 전용) ================= -->
+  <div id="screen-admin-store-bulk" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">매장코드 일괄 생성</h2><span class="link" onclick="loadStoreList(); showScreen('admin-store-list')">이전화면으로</span></div>
+    <div id="bulkStep">
+      <div class="muted"><b>1.</b> 양식을 내려받아 '매장목록' 시트에 매장 정보를 한 줄에 하나씩 입력합니다.</div>
+      <button class="secondary" onclick="downloadStoreTemplate()" style="margin-top:8px;">양식 다운로드 (.xlsx)</button>
+      <div class="muted" style="margin-top:18px;"><b>2.</b> 작성한 파일을 업로드한 뒤 내용을 확인하고 생성합니다.</div>
+      <input id="bulkFile" type="file" accept=".xlsx,.xls" hidden onchange="readBulkFile(this)">
+      <button class="secondary" onclick="document.getElementById('bulkFile').click()" style="margin-top:8px;">엑셀 파일 선택</button>
+      <div class="muted" id="bulkSummary" style="margin-top:12px;"></div>
+      <div class="table-scroll">
+        <table class="list hidden" id="bulkPreviewTable">
+          <thead><tr><th>행</th><th>브랜드</th><th>매장명</th><th>담당자</th><th>이메일</th><th>매장코드</th><th>확인</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button id="bulkCreateBtn" class="hidden" onclick="bulkCreateStores()">매장코드 생성</button>
+      <div class="notice">한 번에 최대 300개까지 등록할 수 있습니다. 한 행이라도 오류가 있으면 아무것도 생성되지 않으니, 오류를 고친 파일로 다시 업로드해 주십시오.</div>
+    </div>
+    <div id="bulkDone" class="hidden">
+      <div class="muted" id="bulkDoneLabel"></div>
+      <button onclick="downloadBulkResult()">생성 결과 엑셀 다운로드 (매장코드 포함)</button>
+      <div class="notice">자동 생성된 매장코드는 이 결과 파일 또는 매장코드 목록에서 확인할 수 있습니다. 매장코드는 접속 비밀번호와 같으니 각 매장에만 안내해 주십시오.</div>
+      <div class="table-scroll">
+        <table class="list" id="bulkResultTable">
+          <thead><tr><th>매장코드</th><th>브랜드</th><th>매장명</th><th>담당자</th><th>이메일</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -696,6 +729,155 @@ async function saveStore(){
   }finally{
     btn.disabled = false;
   }
+}
+
+/* ---- 매장코드 엑셀 일괄 생성 (마스터 전용) ---- */
+// 양식의 열 순서 = 업로드 시 열 이름으로 찾음 (열 순서가 바뀌어도 동작)
+const BULK_COLUMNS = [
+  { key:'brand', header:'브랜드' },
+  { key:'store_name', header:'매장명' },
+  { key:'manager_name', header:'매장 담당자명' },
+  { key:'manager_email', header:'매장 담당자 이메일' },
+  { key:'store_code', header:'매장코드(선택)' },
+];
+let bulkRows = [];    // 업로드한 파일에서 읽은 행 [{row, brand, ..., error}]
+let bulkCreated = []; // 생성 완료된 매장 (결과 다운로드용)
+
+function openBulkStore(){
+  bulkRows = []; bulkCreated = [];
+  document.getElementById('bulkFile').value = '';
+  document.getElementById('bulkSummary').textContent = '';
+  document.getElementById('bulkPreviewTable').classList.add('hidden');
+  document.getElementById('bulkCreateBtn').classList.add('hidden');
+  document.getElementById('bulkStep').classList.remove('hidden');
+  document.getElementById('bulkDone').classList.add('hidden');
+  showScreen('admin-store-bulk');
+}
+
+function downloadStoreTemplate(){
+  const ws = XLSX.utils.aoa_to_sheet([BULK_COLUMNS.map(c=>c.header)]);
+  ws['!cols'] = [14,26,14,28,18].map(wch=>({wch}));
+  const guide = XLSX.utils.aoa_to_sheet([
+    ['작성 방법'],
+    ['1. 매장목록 시트의 2행부터 매장 하나당 한 줄씩 입력합니다. (1행 제목은 수정하지 마십시오)'],
+    ['2. 브랜드는 아래 목록의 이름과 똑같이 입력해야 합니다.'],
+    ['3. 매장 담당자 이메일은 회사 이메일(@eland.co.kr)만 사용할 수 있습니다.'],
+    ['4. 매장코드는 비워두면 자동 생성됩니다. 직접 정할 경우 영문·숫자·하이픈(-) 5~20자로 입력합니다.'],
+    ['5. 한 번에 최대 300개까지 등록할 수 있습니다.'],
+    [],
+    ['사용 가능한 브랜드'],
+    ...BRANDS.map(b=>[b]),
+  ]);
+  guide['!cols'] = [{wch:90}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '매장목록');
+  XLSX.utils.book_append_sheet(wb, guide, '작성안내');
+  XLSX.writeFile(wb, '매장코드_일괄생성_양식.xlsx');
+}
+
+async function readBulkFile(input){
+  const file = input.files[0];
+  input.value = ''; // 같은 파일을 고쳐서 다시 올려도 인식되도록
+  if(!file) return;
+  try{
+    const wb = XLSX.read(await file.arrayBuffer());
+    const ws = wb.Sheets['매장목록'] || wb.Sheets[wb.SheetNames[0]];
+    const lines = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
+    const norm = s=>String(s).replace(/\s/g,'');
+    const head = (lines[0] || []).map(norm);
+    const idx = {};
+    for(const c of BULK_COLUMNS){
+      idx[c.key] = head.findIndex(h=>h.startsWith(norm(c.header).replace('(선택)','')));
+      if(idx[c.key] < 0 && c.key !== 'store_code') throw new Error(`'${c.header}' 열을 찾을 수 없습니다. 양식을 다시 내려받아 작성해 주십시오.`);
+    }
+    bulkRows = [];
+    lines.slice(1).forEach((line, i)=>{
+      const r = { row: i + 2 };
+      BULK_COLUMNS.forEach(c=>{ r[c.key] = idx[c.key] >= 0 ? String(line[idx[c.key]] ?? '').trim() : ''; });
+      r.store_code = r.store_code.toUpperCase();
+      if(BULK_COLUMNS.some(c=>r[c.key])) bulkRows.push(r); // 빈 줄은 건너뜀
+    });
+    if(!bulkRows.length) throw new Error('입력된 매장이 없습니다.');
+    if(bulkRows.length > 300) throw new Error(`한 번에 최대 300개까지 등록할 수 있습니다. (현재 ${bulkRows.length}개)`);
+    checkBulkRows();
+    renderBulkPreview();
+  }catch(e){
+    bulkRows = [];
+    renderBulkPreview();
+    toast('파일을 읽지 못했습니다. ' + e.message);
+  }
+}
+
+// 화면에서 바로 확인 가능한 오류 표시 (회사 이메일 여부·기존 코드 중복 등 최종 확인은 서버가 함)
+function checkBulkRows(){
+  const seen = new Map();
+  bulkRows.forEach(r=>{
+    r.error =
+      !BRANDS.includes(r.brand) ? '브랜드명이 목록과 다릅니다.' :
+      (!r.store_name || !r.manager_name || !r.manager_email) ? '필수 항목이 비어 있습니다.' :
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.manager_email) ? '이메일 형식이 올바르지 않습니다.' :
+      (r.store_code && !/^[A-Z0-9-]{5,20}$/.test(r.store_code)) ? '매장코드는 영문·숫자·하이픈 5~20자입니다.' :
+      (r.store_code && seen.has(r.store_code)) ? `매장코드가 ${seen.get(r.store_code)}행과 중복됩니다.` : '';
+    if(r.store_code && !seen.has(r.store_code)) seen.set(r.store_code, r.row);
+  });
+}
+
+function renderBulkPreview(){
+  const table = document.getElementById('bulkPreviewTable');
+  const btn = document.getElementById('bulkCreateBtn');
+  const errorCount = bulkRows.filter(r=>r.error).length;
+  table.classList.toggle('hidden', !bulkRows.length);
+  btn.classList.toggle('hidden', !bulkRows.length || errorCount > 0);
+  btn.textContent = `매장코드 ${bulkRows.length}개 생성`;
+  document.getElementById('bulkSummary').innerHTML = !bulkRows.length ? '' :
+    `총 ${bulkRows.length}개 매장` + (errorCount ? ` · <b style="color:var(--danger)">오류 ${errorCount}건</b> — 파일을 수정한 뒤 다시 선택해 주십시오.` : ' · 오류 없음');
+  table.querySelector('tbody').innerHTML = bulkRows.map(r=>`<tr>
+    <td>${r.row}</td><td>${escapeHtml(r.brand)}</td><td>${escapeHtml(r.store_name)}</td>
+    <td>${escapeHtml(r.manager_name)}</td><td>${escapeHtml(r.manager_email)}</td>
+    <td>${r.store_code ? escapeHtml(r.store_code) : '<span class="muted">자동생성</span>'}</td>
+    <td>${r.error ? `<span style="color:var(--danger)">${escapeHtml(r.error)}</span>` : '✓'}</td>
+  </tr>`).join('');
+}
+
+async function bulkCreateStores(){
+  if(!bulkRows.length || bulkRows.some(r=>r.error)) return;
+  if(!confirm(`매장코드 ${bulkRows.length}개를 생성하시겠습니까?`)) return;
+  const btn = document.getElementById('bulkCreateBtn');
+  btn.disabled = true;
+  try{
+    const stores = bulkRows.map(({ error, ...r })=>r);
+    const res = await callAdminAction('bulk_create_stores', { stores });
+    if(!res.ok){
+      // 서버 검증 오류(회사 이메일 아님, 이미 사용 중인 코드 등)를 행별로 표시. 아무것도 생성되지 않음
+      res.errors.forEach(e=>{ const r = bulkRows.find(x=>x.row===e.row); if(r) r.error = e.message; });
+      renderBulkPreview();
+      toast('오류가 있어 생성하지 않았습니다. 표의 확인 칸을 확인해 주십시오.');
+      return;
+    }
+    bulkCreated = res.stores;
+    document.getElementById('bulkDoneLabel').textContent = `매장코드 ${bulkCreated.length}개가 생성되었습니다.`;
+    document.querySelector('#bulkResultTable tbody').innerHTML = bulkCreated.map(s=>`<tr>
+      <td><b>${escapeHtml(s.store_code)}</b></td><td>${escapeHtml(s.brand)}</td><td>${escapeHtml(s.store_name)}</td>
+      <td>${escapeHtml(s.manager_name)}</td><td>${escapeHtml(s.manager_email)}</td>
+    </tr>`).join('');
+    document.getElementById('bulkStep').classList.add('hidden');
+    document.getElementById('bulkDone').classList.remove('hidden');
+  }catch(e){
+    toast('생성에 실패했습니다. ' + e.message);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function downloadBulkResult(){
+  const ws = XLSX.utils.json_to_sheet(bulkCreated.map(s=>({
+    '매장코드': s.store_code, '브랜드': s.brand, '매장명': s.store_name,
+    '매장 담당자명': s.manager_name, '매장 담당자 이메일': s.manager_email,
+  })));
+  ws['!cols'] = [18,14,26,14,28].map(wch=>({wch}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '생성결과');
+  XLSX.writeFile(wb, `매장코드_생성결과_${todayStr()}.xlsx`);
 }
 
 /* ---- 수급사 관리 ---- */
