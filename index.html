@@ -136,7 +136,8 @@
     <label>매장코드</label>
     <input id="entryCode" placeholder="예: AL000 (대소문자 구분 없음)" autocomplete="off" autocapitalize="characters">
     <button onclick="enterStore()">접속</button>
-    <button class="secondary" onclick="openStoreRegister()">매장코드 신규 발급</button>
+    <button class="secondary" onclick="openStoreRegister()">매장코드 신규 발급 (코드가 없는 매장만)</button>
+    <div class="notice">초기 매장코드는 부여 받은 그대로 사용해 주십시오. 이미 매장코드를 받은 매장은 새로 발급하지 마십시오.</div>
     <div style="margin-top:16px; text-align:center;">
       <a class="link" href="guide.html">📖 사용 설명서</a>
       <span class="muted" style="margin:0 6px;">|</span>
@@ -160,6 +161,7 @@
     <input id="adminId" autocomplete="username" autocapitalize="off">
     <label>비밀번호</label>
     <input id="adminPw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter') adminLogin()">
+    <div class="muted">아이디는 대소문자를 구분합니다.</div>
     <button id="adminLoginBtn" onclick="adminLogin()">로그인</button>
     <div style="margin-top:12px; text-align:center;">
       <span class="link" onclick="showScreen('entry')">뒤로</span>
@@ -170,9 +172,9 @@
   <div id="screen-admin" class="card hidden">
     <h2>관리자 메뉴</h2>
     <div class="muted" id="adminWho"></div>
-    <button onclick="loadStoreList(); showScreen('admin-store-list')">전체 매장코드 목록</button>
+    <button onclick="loadStoreList(); showScreen('admin-store-list')">매장코드 목록</button>
     <button class="secondary" onclick="loadSubList(); showScreen('admin-sub')">수급사 관리</button>
-    <button class="secondary" onclick="loadAllHistory(); showScreen('admin-history')">전체 발송 이력</button>
+    <button class="secondary" onclick="loadAllHistory(); showScreen('admin-history')">발송 이력 조회</button>
     <button class="secondary master-only" onclick="loadAdminList(); showScreen('admin-accounts')">관리자 계정 관리</button>
     <div style="margin-top:14px; text-align:center;"><a class="link" href="guide.html#admin" target="_blank" rel="noopener">📖 관리자 사용 설명서</a></div>
     <div class="notice viewer-only">일반 관리자 계정은 소속 브랜드의 매장만 조회·수정·일괄 생성할 수 있습니다. 수급사는 모든 브랜드가 함께 사용하므로 수정 시 주의해 주십시오. 발송 이력 수정은 마스터 관리자에게 요청해 주십시오.</div>
@@ -201,6 +203,7 @@
   <!-- ================= 매장코드 생성 (매장 사용자) ================= -->
   <div id="screen-store-register" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">매장코드 신규 발급</h2><span class="link" onclick="showScreen('entry')">뒤로</span></div>
+    <div class="notice">이미 매장코드를 부여 받은 매장은 새로 발급하지 말고, 부여 받은 코드 그대로 접속해 주십시오. 신규 발급은 매장코드가 없는 신규 매장만 이용해 주십시오.</div>
     <label>브랜드</label>
     <select id="newBrand"></select>
     <label>매장명</label>
@@ -226,7 +229,7 @@
 
   <!-- ================= 매장 목록 ================= -->
   <div id="screen-admin-store-list" class="card hidden">
-    <div class="topbar"><h2 style="margin:0;">전체 매장코드 목록</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
+    <div class="topbar"><h2 style="margin:0;">매장코드 목록</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
     <button class="secondary" onclick="openBulkStore()" style="margin:0 0 8px;">엑셀로 매장코드 일괄 생성</button>
     <div class="table-scroll">
       <table class="list" id="storeListTable">
@@ -240,6 +243,7 @@
   <div id="screen-admin-store-bulk" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">매장코드 일괄 생성</h2><span class="link" onclick="loadStoreList(); showScreen('admin-store-list')">이전화면으로</span></div>
     <div id="bulkStep">
+      <div class="notice viewer-only">일반 관리자는 소속 브랜드 매장만 등록할 수 있습니다.</div>
       <div class="muted"><b>1.</b> 양식을 내려받아 '매장목록' 시트에 매장 정보를 한 줄에 하나씩 입력합니다.</div>
       <button class="secondary" onclick="downloadStoreTemplate()" style="margin-top:8px;">양식 다운로드 (.xlsx)</button>
       <div class="muted" style="margin-top:18px;"><b>2.</b> 작성한 파일을 업로드한 뒤 내용을 확인하고 생성합니다.</div>
@@ -277,6 +281,7 @@
     <div class="muted">매장코드를 변경하면 해당 매장은 새 코드로만 접속할 수 있습니다. 변경 후 매장에 꼭 안내해 주십시오.</div>
     <label>브랜드</label>
     <select id="editStoreBrand"></select>
+    <div class="muted viewer-only">일반 관리자는 소속 브랜드 매장만 수정할 수 있으며, 다른 브랜드로 변경할 수 없습니다.</div>
     <label>매장명</label>
     <input id="editStoreName">
     <label>매장 담당자명</label>
@@ -294,6 +299,7 @@
       <tbody></tbody>
     </table>
     <button onclick="openSubForm(null)">+ 수급사 추가</button>
+    <div class="notice">수급사는 모든 브랜드가 함께 사용합니다. 수정하면 모든 브랜드 매장의 수급사 선택 목록과 메일 수신 주소에 바로 반영됩니다.</div>
   </div>
 
   <div id="screen-admin-sub-form" class="card hidden">
@@ -305,12 +311,13 @@
     <input id="subManagerName">
     <label>이메일</label>
     <input id="subEmail" type="email">
+    <div class="notice">이 수급사를 선택하는 모든 브랜드 매장에 적용됩니다. 현장대리인 성명·이메일은 개인정보이므로 수집·이용 동의를 받은 뒤 등록해 주십시오.</div>
     <button onclick="saveSub()">저장</button>
   </div>
 
-  <!-- ================= 관리자: 전체 발송 이력 ================= -->
+  <!-- ================= 관리자: 발송 이력 조회 (일반 관리자는 소속 브랜드만) ================= -->
   <div id="screen-admin-history" class="card hidden">
-    <div class="topbar"><h2 style="margin:0;">전체 발송 이력</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
+    <div class="topbar"><h2 style="margin:0;">발송 이력 조회</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
     <div class="filter-box">
       <div class="filter-grid">
         <div><label>매장</label><select id="filterStore" onchange="renderAllHistory()"></select></div>
@@ -950,7 +957,7 @@ async function saveSub(){
   showScreen('admin-sub');
 }
 
-/* ---- 관리자: 전체 발송 이력 ---- */
+/* ---- 관리자: 발송 이력 조회 ---- */
 async function loadAllHistory(){
   const tbody = document.querySelector('#adminHistoryTable tbody');
   tbody.innerHTML = `<tr><td colspan="6">불러오는 중입니다...</td></tr>`;
