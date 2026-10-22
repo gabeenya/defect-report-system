@@ -16,9 +16,12 @@
 //   - 관리자 action (마스터 + 일반 관리자, 조회 전용):
 //       verify, list_stores, list_submissions, list_subcontractors, admin_doc_url
 //       ※ 일반 관리자는 본인 소속 브랜드(admins.brand)의 매장·발송 이력·문서만 조회 가능
-//   - 마스터 전용 action (수정 권한):
-//       update_store, bulk_create_stores(엑셀 일괄 생성), save_subcontractor, update_submission,
-//       list_admins, create_admin, update_admin_brand, delete_admin
+//   - 관리자 수정 action (일반 관리자는 소속 브랜드 매장만):
+//       update_store, bulk_create_stores(엑셀 일괄 생성)
+//   - 관리자 수정 action (브랜드 무관):
+//       save_subcontractor
+//   - 마스터 전용 action:
+//       update_submission, list_admins, create_admin, update_admin_brand, delete_admin
 //
 // 로그인:
 //   마스터 관리자 = 아이디 ADMIN_ID(기본값 "master") + 비밀번호 ADMIN_PASSWORD
@@ -66,7 +69,7 @@ async function hasMagic(path: string, magic: number[]) {
   const head = new Uint8Array(await data.slice(0, magic.length).arrayBuffer());
   return magic.every((b, i) => head[i] === b);
 }
-const LOGIN_ID_RE = /^[a-zA-Z0-9._-]{3,30}$/;
+const LOGIN_ID_RE = /^[a-zA-Z0-9._@-]{3,50}$/; // 이메일 주소 형태 아이디 허용
 const EDITABLE_STATUS = ["sent", "failed"]; // 'pending'으로 되돌리면 재발송 대상이 되므로 제외
 const BUCKET = "defect-reports";
 const MAX_PHOTOS = 5;
@@ -241,8 +244,13 @@ async function registerStore(payload: any) {
   return text("매장코드 자동 발급에 실패했습니다. 다시 시도해 주십시오.", 500);
 }
 
+// brandScope: 일반 관리자의 소속 브랜드 (마스터는 undefined = 제한 없음)
+function brandOnlyMsg(brand: string) {
+  return `소속 브랜드(${brand || "미지정"}) 매장만 등록·수정할 수 있습니다.`;
+}
+
 // deno-lint-ignore no-explicit-any
-async function updateStore(payload: any) {
+async function updateStore(payload: any, brandScope?: string) {
   const id = str(payload?.id);
   if (!id) return text("수정할 매장이 지정되지 않았습니다.", 400);
   const fields = {
@@ -255,8 +263,9 @@ async function updateStore(payload: any) {
   const invalid = validateStoreFields(fields);
   if (invalid) return text(invalid, 400);
 
-  const { data: current } = await supabaseAdmin.from("stores").select("store_code").eq("id", id).maybeSingle();
-  if (!current) return text("존재하지 않는 매장입니다.", 404);
+  const { data: current } = await supabaseAdmin.from("stores").select("store_code, brand").eq("id", id).maybeSingle();
+  if (!current || (brandScope !== undefined && current.brand !== brandScope)) return text("존재하지 않는 매장입니다.", 404);
+  if (brandScope !== undefined && fields.brand !== brandScope) return text(brandOnlyMsg(brandScope), 403);
   // 예전에 발급된 코드(한글 포함 등)는 그대로 두는 경우 허용, 바꿀 때만 형식 검사
   if (fields.store_code !== current.store_code.toUpperCase() && !STORE_CODE_RE.test(fields.store_code)) {
     return text(STORE_CODE_RULE, 400);
@@ -275,7 +284,7 @@ async function updateStore(payload: any) {
 // 엑셀 일괄 생성: 모든 행을 먼저 검증하고, 하나라도 오류가 있으면 아무것도 만들지 않음 (행별 오류 반환)
 const BULK_MAX_ROWS = 300;
 // deno-lint-ignore no-explicit-any
-async function bulkCreateStores(payload: any) {
+async function bulkCreateStores(payload: any, brandScope?: string) {
   const input = Array.isArray(payload?.stores) ? payload.stores : [];
   if (!input.length) return text("등록할 매장이 없습니다.", 400);
   if (input.length > BULK_MAX_ROWS) return text(`한 번에 최대 ${BULK_MAX_ROWS}개 매장까지 등록할 수 있습니다.`, 400);
@@ -303,6 +312,7 @@ async function bulkCreateStores(payload: any) {
     };
     const code = str(r?.store_code).toUpperCase();
     const invalid = validateStoreFields(fields) ||
+      (brandScope !== undefined && fields.brand !== brandScope ? brandOnlyMsg(brandScope) : null) ||
       (code && !STORE_CODE_RE.test(code) ? STORE_CODE_RULE : null) ||
       (code && taken.has(code) ? `이미 사용 중인 매장코드입니다. (${code})` : null) ||
       (code && fileCodes.has(code) ? `파일 안에서 매장코드가 중복됩니다. (${fileCodes.get(code)}행과 같음)` : null);
@@ -400,7 +410,7 @@ async function createAdmin(payload: any) {
   const password = String(payload?.password ?? "");
   if (!login_id || !name || !password) return text("필수 항목을 모두 입력해 주십시오.", 400);
   if (!BRANDS.includes(brand)) return text("소속 브랜드를 목록에서 선택해 주십시오.", 400);
-  if (!LOGIN_ID_RE.test(login_id)) return text("아이디는 영문, 숫자, 마침표(.), 밑줄(_), 하이픈(-) 조합 3~30자로 입력해 주십시오.", 400);
+  if (!LOGIN_ID_RE.test(login_id)) return text("아이디는 영문, 숫자, 마침표(.), 밑줄(_), 하이픈(-), @ 조합 3~50자로 입력해 주십시오.", 400);
   if (login_id === ADMIN_ID) return text("사용할 수 없는 아이디입니다.", 400);
   if (name.length > 50) return text("이름이 너무 깁니다.", 400);
   if (password.length < 8) return text("비밀번호는 8자 이상으로 입력해 주십시오.", 400);
@@ -633,11 +643,14 @@ async function handle(req: Request): Promise<Response> {
     return await signedDocUrl(str(payload?.submission_id), { brand: brandScope });
   }
 
+  // ---------- 관리자 수정 action (일반 관리자는 소속 브랜드 매장만) ----------
+  if (action === "update_store") return await updateStore(payload, brandScope);
+  if (action === "bulk_create_stores") return await bulkCreateStores(payload, brandScope);
+  // 수급사는 모든 브랜드가 함께 쓰므로 브랜드 제한 없음
+  if (action === "save_subcontractor") return await saveSubcontractor(payload);
+
   // ---------- 마스터 전용 action ----------
   const MASTER_ACTIONS: Record<string, (p: unknown) => Promise<Response>> = {
-    update_store: updateStore,
-    bulk_create_stores: bulkCreateStores,
-    save_subcontractor: saveSubcontractor,
     update_submission: updateSubmission,
     list_admins: listAdmins,
     create_admin: createAdmin,
