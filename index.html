@@ -231,6 +231,14 @@
   <div id="screen-admin-store-list" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">매장코드 목록</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
     <button class="secondary" onclick="openBulkStore()" style="margin:0 0 8px;">엑셀로 매장코드 일괄 생성</button>
+    <div class="filter-box">
+      <div class="filter-grid">
+        <div><label>브랜드</label><select id="storeBrandFilter" onchange="renderStoreList()"></select></div>
+        <div></div>
+      </div>
+      <div class="filter-foot"><span class="muted" id="storeCount"></span></div>
+    </div>
+    <button class="secondary" onclick="downloadStoreCsv()" style="margin:0 0 8px;">CSV 다운로드 (현재 브랜드)</button>
     <div class="table-scroll">
       <table class="list" id="storeListTable">
         <thead><tr><th>코드</th><th>매장명</th><th>브랜드</th><th>담당자</th><th>이메일</th><th>생성일</th><th></th></tr></thead>
@@ -299,6 +307,7 @@
       <tbody></tbody>
     </table>
     <button onclick="openSubForm(null)">+ 수급사 추가</button>
+    <button class="secondary" onclick="downloadSubCsv()">CSV 다운로드</button>
     <div class="notice">수급사는 모든 브랜드가 함께 사용합니다. 수정하면 모든 브랜드 매장의 수급사 선택 목록과 메일 수신 주소에 바로 반영됩니다.</div>
   </div>
 
@@ -320,6 +329,7 @@
     <div class="topbar"><h2 style="margin:0;">발송 이력 조회</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
     <div class="filter-box">
       <div class="filter-grid">
+        <div><label>브랜드</label><select id="filterBrand" onchange="fillHistoryFilterOptions(); renderAllHistory()"></select></div>
         <div><label>매장</label><select id="filterStore" onchange="renderAllHistory()"></select></div>
         <div><label>수급사</label><select id="filterSub" onchange="renderAllHistory()"></select></div>
         <div><label>상태</label>
@@ -330,7 +340,6 @@
             <option value="pending">대기중</option>
           </select>
         </div>
-        <div></div>
         <div><label>수행일자 (부터)</label><input id="filterFrom" type="date" onchange="renderAllHistory()"></div>
         <div><label>수행일자 (까지)</label><input id="filterTo" type="date" onchange="renderAllHistory()"></div>
       </div>
@@ -340,6 +349,7 @@
       </div>
     </div>
     <button class="secondary" id="excelBtn" onclick="downloadHistoryExcel()" style="margin:0 0 8px;">엑셀 다운로드 (현재 조건, .xlsx)</button>
+    <button class="secondary" id="csvBtn" onclick="downloadHistoryExcel('csv')" style="margin:0 0 8px;">CSV 다운로드 (현재 조건)</button>
     <div class="table-scroll">
       <table class="list" id="adminHistoryTable">
         <thead><tr><th>매장</th><th>수급사</th><th>수행일자</th><th>상태</th><th></th><th class="master-only"></th></tr></thead>
@@ -445,7 +455,8 @@ const EDGE_FUNCTION_URL = SUPABASE_URL + "/functions/v1/send-defect-email";
 const ADMIN_ACTION_URL = SUPABASE_URL + "/functions/v1/admin-action";
 const DOGUP_IN = "주식회사 이랜드이츠"; // 도급인 고정값
 
-const BRANDS = ["애슐리퀸즈","델리바이애슐리","리미니","자연별곡","피자몰","로운","프랑제리","프랜차이즈","카페"];
+// 이 순서가 화면의 브랜드 표시·정렬 순서 (admin-action.ts의 BRANDS와 동일하게 유지)
+const BRANDS = ["애슐리퀸즈","피자몰","로운","자연별곡","델리바이애슐리","리미니","프랑제리","프랜차이즈","카페"];
 
 // 브라우저는 DB·Storage를 직접 조회할 권한이 없음 (RLS 전면 차단). 이 클라이언트는
 // 서버가 발급한 1회용 업로드 주소로 파일을 올리는 용도로만 사용
@@ -720,12 +731,69 @@ async function loadStoreList(){
   try{
     ({ stores: adminStores } = await callAdminAction('list_stores'));
   }catch(e){ tbody.innerHTML = `<tr><td colspan="7">조회에 실패했습니다.</td></tr>`; return; }
+  adminStores.sort(compareStores);
+  fillBrandFilter('storeBrandFilter', adminStores.map(s=>s.brand));
+  renderStoreList();
+}
+
+// 브랜드 순서(BRANDS) → 같은 브랜드 안에서는 매장코드 숫자 순 (AL077 < AL108 < AL230)
+function brandRank(b){
+  const i = BRANDS.indexOf(b);
+  return i < 0 ? BRANDS.length : i;
+}
+function compareStores(a, b){
+  return brandRank(a.brand) - brandRank(b.brand) ||
+    String(a.store_code).localeCompare(String(b.store_code), 'en', { numeric:true });
+}
+
+// 브랜드 선택지: 목록에 실제로 있는 브랜드만, BRANDS 순서로 (선택값은 새로고침 후에도 유지)
+function fillBrandFilter(id, brands){
+  const sel = document.getElementById(id);
+  const prev = sel.value;
+  const list = [...new Set(brands)].sort((a,b)=>brandRank(a) - brandRank(b));
+  sel.innerHTML = `<option value="">전체</option>` + list.map(b=>`<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+  sel.value = list.includes(prev) ? prev : '';
+}
+
+function getFilteredStores(){
+  const brand = document.getElementById('storeBrandFilter').value;
+  return adminStores.filter(s=>!brand || s.brand === brand);
+}
+
+function renderStoreList(){
+  const tbody = document.querySelector('#storeListTable tbody');
+  const list = getFilteredStores();
+  document.getElementById('storeCount').textContent =
+    list.length === adminStores.length ? `전체 ${list.length}개` : `${list.length}개 / 전체 ${adminStores.length}개`;
   if(!adminStores.length){ tbody.innerHTML = `<tr><td colspan="7">등록된 매장이 없습니다.</td></tr>`; return; }
-  tbody.innerHTML = adminStores.map(s=>`<tr>
+  tbody.innerHTML = list.map(s=>`<tr>
     <td><b>${escapeHtml(s.store_code)}</b></td><td>${escapeHtml(s.store_name)}</td><td>${escapeHtml(s.brand)}</td>
     <td>${escapeHtml(s.manager_name)}</td><td>${escapeHtml(s.manager_email)}</td><td>${formatDateTime(s.created_at).slice(0,10)}</td>
     <td><span class="link" onclick="openStoreForm('${s.id}')">수정</span></td>
   </tr>`).join('');
+}
+
+/* ---- CSV 다운로드 (엑셀에서 한글이 깨지지 않도록 UTF-8 BOM 포함) ---- */
+function downloadCsv(fileName, rows){
+  if(!rows.length){ toast('다운로드할 데이터가 없습니다.'); return; }
+  // =, +, -, @ 로 시작하는 값은 엑셀이 수식으로 실행할 수 있으므로 앞에 ' 를 붙여 글자로 취급
+  const safe = rows.map(r=>Object.fromEntries(Object.entries(r).map(([k,v])=>
+    [k, typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? "'" + v : v])));
+  const csv = '﻿' + XLSX.utils.sheet_to_csv(XLSX.utils.json_to_sheet(safe));
+  const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+function downloadStoreCsv(){
+  const brand = document.getElementById('storeBrandFilter').value;
+  downloadCsv(`매장코드목록_${brand || '전체'}_${todayStr()}.csv`, getFilteredStores().map(s=>({
+    '브랜드': s.brand, '매장코드': s.store_code, '매장명': s.store_name,
+    '매장 담당자': s.manager_name, '매장 담당자 이메일': s.manager_email,
+    '생성일': formatDateTime(s.created_at).slice(0,10),
+  })));
 }
 
 /* ---- 매장 정보 수정 (일반 관리자는 소속 브랜드만) ---- */
@@ -931,6 +999,15 @@ async function loadSubList(){
     </tr>`).join('');
 }
 
+async function downloadSubCsv(){
+  try{
+    await loadSubcontractorsCache();
+  }catch(e){ toast('조회에 실패했습니다. ' + e.message); return; }
+  downloadCsv(`수급사목록_${todayStr()}.csv`, subcontractors.map(s=>({
+    '업체명': s.company_name, '현장대리인': s.site_manager_name, '이메일': s.email,
+  })));
+}
+
 function openSubForm(sub){
   document.getElementById('subFormTitle').textContent = sub ? '수급사 수정' : '수급사 추가';
   document.getElementById('subId').value = sub ? sub.id : '';
@@ -979,9 +1056,12 @@ function fillHistoryFilterOptions(){
       sorted.map(([v, label])=>`<option value="${v}">${escapeHtml(label)}</option>`).join('');
     sel.value = entries.has(prev) ? prev : '';
   };
+  fillBrandFilter('filterBrand', adminSubmissions.map(r=>r.stores?.brand).filter(Boolean));
+  const brand = document.getElementById('filterBrand').value;
   const stores = new Map(), subs = new Map();
   adminSubmissions.forEach(r=>{
-    if(r.stores) stores.set(r.store_id, `${r.stores.brand} (${r.stores.store_name})`);
+    // 매장 선택지는 선택한 브랜드의 매장만
+    if(r.stores && (!brand || r.stores.brand === brand)) stores.set(r.store_id, `${r.stores.brand} (${r.stores.store_name})`);
     if(r.subcontractors) subs.set(r.subcontractor_id, r.subcontractors.company_name);
   });
   fill('filterStore', stores);
@@ -989,12 +1069,14 @@ function fillHistoryFilterOptions(){
 }
 
 function getFilteredHistory(list){
+  const brand = document.getElementById('filterBrand').value;
   const store = document.getElementById('filterStore').value;
   const sub = document.getElementById('filterSub').value;
   const status = document.getElementById('filterStatus').value;
   const from = document.getElementById('filterFrom').value;
   const to = document.getElementById('filterTo').value;
   return list.filter(r=>
+    (!brand || r.stores?.brand === brand) &&
     (!store || r.store_id === store) &&
     (!sub || r.subcontractor_id === sub) &&
     // '대기중'에는 발송 처리 중인 건도 포함
@@ -1005,7 +1087,8 @@ function getFilteredHistory(list){
 }
 
 function resetHistoryFilter(){
-  ['filterStore','filterSub','filterStatus','filterFrom','filterTo'].forEach(id=>document.getElementById(id).value='');
+  ['filterBrand','filterStore','filterSub','filterStatus','filterFrom','filterTo'].forEach(id=>document.getElementById(id).value='');
+  fillHistoryFilterOptions();
   renderAllHistory();
 }
 
@@ -1074,9 +1157,9 @@ async function saveSubmission(){
   }
 }
 
-/* ---- 관리자: 발송 이력 엑셀 다운로드 ---- */
-async function downloadHistoryExcel(){
-  const btn = document.getElementById('excelBtn');
+/* ---- 관리자: 발송 이력 엑셀/CSV 다운로드 (format: 'xlsx' | 'csv') ---- */
+async function downloadHistoryExcel(format = 'xlsx'){
+  const btn = document.getElementById(format === 'csv' ? 'csvBtn' : 'excelBtn');
   btn.disabled = true;
   try{
     // 화면을 열어둔 사이 새로 들어온 건까지 포함되도록 다시 조회
@@ -1104,13 +1187,17 @@ async function downloadHistoryExcel(){
       '실패사유': r.email_error || ''
     }));
 
+    const brand = document.getElementById('filterBrand').value;
+    const baseName = `하자개선요청서_발송이력_${brand ? brand + '_' : ''}${todayStr()}`;
+    if(format === 'csv'){ downloadCsv(baseName + '.csv', rows); return; }
+
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [6,17,13,13,22,12,24,18,12,24,12,24,18,40,8,10,30].map(wch=>({wch}));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '발송이력');
-    XLSX.writeFile(wb, `하자개선요청서_발송이력_${todayStr()}.xlsx`);
+    XLSX.writeFile(wb, baseName + '.xlsx');
   }catch(e){
-    toast('엑셀 다운로드에 실패했습니다. ' + e.message);
+    toast('다운로드에 실패했습니다. ' + e.message);
   }finally{
     btn.disabled = false;
   }

@@ -48,7 +48,7 @@ const supabaseAdmin = createClient(
 );
 
 // index.html의 BRANDS와 동일하게 유지
-const BRANDS = ["애슐리퀸즈","델리바이애슐리","리미니","자연별곡","피자몰","로운","프랑제리","프랜차이즈","카페"];
+const BRANDS = ["애슐리퀸즈","피자몰","로운","자연별곡","델리바이애슐리","리미니","프랑제리","프랜차이즈","카페"];
 const STORE_CODE_RE = /^[A-Z0-9-]{5,20}$/;
 const STORE_CODE_RULE = "매장코드는 영문, 숫자, 하이픈(-) 조합 5~20자로 입력해 주십시오.";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
