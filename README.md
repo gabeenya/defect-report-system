@@ -99,6 +99,17 @@ const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                  // 1번에서 복사
 2. `admin-action` Edge Function을 최신 코드로 재배포
 3. GitHub에 `index.html`, `manifest.webmanifest`, `sw.js`, `icons/` 폴더 반영
 
+## 4-4. 일반 관리자 소속 브랜드 (업데이트)
+
+- 마스터가 일반 관리자를 만들 때 **소속 브랜드**를 반드시 선택. 이후 목록에서 브랜드 변경 가능
+- 일반 관리자는 소속 브랜드의 **매장 목록·발송 이력·엑셀·문서만** 조회 (서버에서도 차단)
+- 브랜드가 지정되지 않은 기존 일반 관리자 계정은 아무것도 보이지 않음 → 마스터가 지정
+
+배포 순서 (순서 중요):
+1. `schema (2).sql` 맨 아래 "[추가 6]" 블록을 SQL Editor에서 실행
+2. `admin-action` Edge Function을 최신 코드로 재배포
+3. GitHub에 `index.html`, `guide.html` 반영
+
 ## 5. 보안 구조 및 운영 수칙 (전사 배포 전 필수)
 
 ### 구조

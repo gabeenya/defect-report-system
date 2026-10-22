@@ -160,3 +160,11 @@ update storage.buckets
 
 -- 확인용: 아래 조회 결과에 public 스키마 정책이 하나도 없고, storage에도 defect-reports 관련 정책이 없어야 정상
 -- select schemaname, tablename, policyname from pg_policies where schemaname in ('public', 'storage');
+
+-- ============================================================
+-- [추가 6] 일반 관리자 소속 브랜드
+-- 일반 관리자는 소속 브랜드의 매장 목록·발송 이력·문서만 조회 가능.
+-- 브랜드가 비어 있는 기존 계정은 아무것도 보이지 않으므로, 마스터가 관리자 계정 관리 화면에서 지정할 것.
+-- ※ admin-action 재배포 전에 먼저 실행할 것 (새 코드가 이 컬럼을 조회함)
+-- ============================================================
+alter table admins add column if not exists brand text;

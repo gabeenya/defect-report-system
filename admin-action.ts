@@ -15,9 +15,10 @@
 //       store_doc_url  : 이 매장 요청서 PDF 열람용 60초 서명 URL
 //   - 관리자 action (마스터 + 일반 관리자, 조회 전용):
 //       verify, list_stores, list_submissions, list_subcontractors, admin_doc_url
+//       ※ 일반 관리자는 본인 소속 브랜드(admins.brand)의 매장·발송 이력·문서만 조회 가능
 //   - 마스터 전용 action (수정 권한):
 //       update_store, bulk_create_stores(엑셀 일괄 생성), save_subcontractor, update_submission,
-//       list_admins, create_admin, delete_admin
+//       list_admins, create_admin, update_admin_brand, delete_admin
 //
 // 로그인:
 //   마스터 관리자 = 아이디 ADMIN_ID(기본값 "master") + 비밀번호 ADMIN_PASSWORD
@@ -142,24 +143,25 @@ function safeEqual(a: string, b: string) {
   return diff === 0;
 }
 
-type Admin = { role: "master" | "admin"; login_id: string; name: string };
+// brand: 일반 관리자의 소속 브랜드 (마스터는 null = 전체 브랜드)
+type Admin = { role: "master" | "admin"; login_id: string; name: string; brand: string | null };
 
 async function authenticate(loginId: string, password: string): Promise<Admin | null> {
   if (!loginId || !password) return null;
   if (loginId === ADMIN_ID) {
     return ADMIN_PASSWORD && safeEqual(password, ADMIN_PASSWORD)
-      ? { role: "master", login_id: ADMIN_ID, name: "마스터 관리자" }
+      ? { role: "master", login_id: ADMIN_ID, name: "마스터 관리자", brand: null }
       : null;
   }
   const { data } = await supabaseAdmin
     .from("admins")
-    .select("login_id, name, password_hash, password_salt")
+    .select("login_id, name, brand, password_hash, password_salt")
     .eq("login_id", loginId)
     .maybeSingle();
   if (!data) return null;
   const hash = await hashPassword(password, data.password_salt);
   return safeEqual(hash, data.password_hash)
-    ? { role: "admin", login_id: data.login_id, name: data.name }
+    ? { role: "admin", login_id: data.login_id, name: data.name, brand: data.brand ?? null }
     : null;
 }
 
@@ -384,7 +386,7 @@ async function updateSubmission(payload: any) {
 async function listAdmins() {
   const { data, error } = await supabaseAdmin
     .from("admins")
-    .select("id, login_id, name, created_at")
+    .select("id, login_id, name, brand, created_at")
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return json({ ok: true, admins: data });
@@ -394,8 +396,10 @@ async function listAdmins() {
 async function createAdmin(payload: any) {
   const login_id = str(payload?.login_id);
   const name = str(payload?.name);
+  const brand = str(payload?.brand);
   const password = String(payload?.password ?? "");
   if (!login_id || !name || !password) return text("필수 항목을 모두 입력해 주십시오.", 400);
+  if (!BRANDS.includes(brand)) return text("소속 브랜드를 목록에서 선택해 주십시오.", 400);
   if (!LOGIN_ID_RE.test(login_id)) return text("아이디는 영문, 숫자, 마침표(.), 밑줄(_), 하이픈(-) 조합 3~30자로 입력해 주십시오.", 400);
   if (login_id === ADMIN_ID) return text("사용할 수 없는 아이디입니다.", 400);
   if (name.length > 50) return text("이름이 너무 깁니다.", 400);
@@ -403,8 +407,19 @@ async function createAdmin(payload: any) {
 
   const password_salt = newSalt();
   const password_hash = await hashPassword(password, password_salt);
-  const { error } = await supabaseAdmin.from("admins").insert({ login_id, name, password_hash, password_salt });
+  const { error } = await supabaseAdmin.from("admins").insert({ login_id, name, brand, password_hash, password_salt });
   if (error?.code === "23505") return text("이미 사용 중인 아이디입니다.", 409);
+  if (error) throw new Error(error.message);
+  return json({ ok: true });
+}
+
+// deno-lint-ignore no-explicit-any
+async function updateAdminBrand(payload: any) {
+  const id = str(payload?.id);
+  const brand = str(payload?.brand);
+  if (!id) return text("수정할 계정이 지정되지 않았습니다.", 400);
+  if (!BRANDS.includes(brand)) return text("소속 브랜드를 목록에서 선택해 주십시오.", 400);
+  const { error } = await supabaseAdmin.from("admins").update({ brand }).eq("id", id);
   if (error) throw new Error(error.message);
   return json({ ok: true });
 }
@@ -523,10 +538,12 @@ async function storeSubmit(store: Store, payload: any) {
   return json({ ok: true, submission_id: data.id });
 }
 
-async function signedDocUrl(submissionId: string, storeId?: string) {
+// scope: 매장은 { storeId } = 자기 매장 문서만, 일반 관리자는 { brand } = 소속 브랜드 문서만
+async function signedDocUrl(submissionId: string, scope: { storeId?: string; brand?: string } = {}) {
   if (!/^[0-9a-f-]{36}$/.test(submissionId)) return text("문서를 찾을 수 없습니다.", 404);
-  let q = supabaseAdmin.from("submissions").select("document_url").eq("id", submissionId);
-  if (storeId) q = q.eq("store_id", storeId); // 매장은 자기 매장 문서만
+  let q = supabaseAdmin.from("submissions").select("document_url, stores!inner(brand)").eq("id", submissionId);
+  if (scope.storeId) q = q.eq("store_id", scope.storeId);
+  if (scope.brand !== undefined) q = q.eq("stores.brand", scope.brand);
   const { data } = await q.maybeSingle();
   if (!data?.document_url) return text("문서를 찾을 수 없습니다.", 404);
   const { data: signed, error } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(data.document_url, 60);
@@ -566,7 +583,7 @@ async function handle(req: Request): Promise<Response> {
     if (action === "store_history") return await storeHistory(store);
     if (action === "store_upload_urls") return await storeUploadUrls(store, payload);
     if (action === "store_submit") return await storeSubmit(store, payload);
-    if (action === "store_doc_url") return await signedDocUrl(str(payload?.submission_id), store.id);
+    if (action === "store_doc_url") return await signedDocUrl(str(payload?.submission_id), { storeId: store.id });
     return text("알 수 없는 요청입니다.", 400);
   }
 
@@ -583,20 +600,27 @@ async function handle(req: Request): Promise<Response> {
     return json({ ok: true, admin });
   }
 
+  // 일반 관리자는 소속 브랜드만 조회. 브랜드가 지정되지 않은 예전 계정은 아무것도 보이지 않음 (마스터가 지정해야 함)
+  const brandScope = admin.role === "master" ? undefined : (admin.brand ?? "");
+
   if (action === "list_stores") {
-    const { data, error } = await supabaseAdmin
+    let q = supabaseAdmin
       .from("stores")
       .select("*")
       .order("created_at", { ascending: false });
+    if (brandScope !== undefined) q = q.eq("brand", brandScope);
+    const { data, error } = await q;
     if (error) throw new Error(error.message);
     return json({ ok: true, stores: data });
   }
 
   if (action === "list_submissions") {
-    const { data, error } = await supabaseAdmin
+    let q = supabaseAdmin
       .from("submissions")
-      .select("*, stores(store_code, store_name, brand, manager_name, manager_email), subcontractors(company_name, site_manager_name, email)")
+      .select("*, stores!inner(store_code, store_name, brand, manager_name, manager_email), subcontractors(company_name, site_manager_name, email)")
       .order("created_at", { ascending: false });
+    if (brandScope !== undefined) q = q.eq("stores.brand", brandScope);
+    const { data, error } = await q;
     if (error) throw new Error(error.message);
     return json({ ok: true, submissions: data });
   }
@@ -606,7 +630,7 @@ async function handle(req: Request): Promise<Response> {
   }
 
   if (action === "admin_doc_url") {
-    return await signedDocUrl(str(payload?.submission_id));
+    return await signedDocUrl(str(payload?.submission_id), { brand: brandScope });
   }
 
   // ---------- 마스터 전용 action ----------
@@ -617,6 +641,7 @@ async function handle(req: Request): Promise<Response> {
     update_submission: updateSubmission,
     list_admins: listAdmins,
     create_admin: createAdmin,
+    update_admin_brand: updateAdminBrand,
     delete_admin: deleteAdmin,
   };
   if (action in MASTER_ACTIONS) {
