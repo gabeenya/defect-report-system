@@ -230,6 +230,7 @@
   <!-- ================= 매장 목록 ================= -->
   <div id="screen-admin-store-list" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">매장코드 목록</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
+    <button onclick="openStoreForm(null)" style="margin:0 0 8px;">+ 매장코드 생성</button>
     <button class="secondary" onclick="openBulkStore()" style="margin:0 0 8px;">엑셀로 매장코드 일괄 생성</button>
     <div class="filter-box">
       <div class="filter-grid">
@@ -282,14 +283,14 @@
 
   <!-- ================= 매장 정보 수정 (일반 관리자는 소속 브랜드만) ================= -->
   <div id="screen-admin-store-form" class="card hidden">
-    <div class="topbar"><h2 style="margin:0;">매장 정보 수정</h2><span class="link" onclick="showScreen('admin-store-list')">이전화면으로</span></div>
+    <div class="topbar"><h2 style="margin:0;" id="storeFormTitle">매장 정보 수정</h2><span class="link" onclick="showScreen('admin-store-list')">이전화면으로</span></div>
     <input type="hidden" id="editStoreId">
     <label>매장코드</label>
     <input id="editStoreCode" autocomplete="off">
-    <div class="muted">매장코드를 변경하면 해당 매장은 새 코드로만 접속할 수 있습니다. 변경 후 매장에 꼭 안내해 주십시오.</div>
+    <div class="muted" id="storeCodeHelp">매장코드를 변경하면 해당 매장은 새 코드로만 접속할 수 있습니다. 변경 후 매장에 꼭 안내해 주십시오.</div>
     <label>브랜드</label>
     <select id="editStoreBrand"></select>
-    <div class="muted viewer-only">일반 관리자는 소속 브랜드 매장만 수정할 수 있으며, 다른 브랜드로 변경할 수 없습니다.</div>
+    <div class="muted viewer-only">일반 관리자는 소속 브랜드 매장만 생성·수정할 수 있으며, 다른 브랜드로 변경할 수 없습니다.</div>
     <label>매장명</label>
     <input id="editStoreName">
     <label>매장 담당자명</label>
@@ -797,21 +798,32 @@ function downloadStoreCsv(){
 }
 
 /* ---- 매장 정보 수정 (일반 관리자는 소속 브랜드만) ---- */
+// id가 없으면 신규 생성 화면 (마스터는 전 브랜드, 일반 관리자는 소속 브랜드만 — 브랜드 선택지가 이미 제한됨)
 function openStoreForm(id){
-  const s = adminStores.find(x=>x.id===id);
-  if(!s) return;
-  document.getElementById('editStoreId').value = s.id;
-  document.getElementById('editStoreCode').value = s.store_code;
-  document.getElementById('editStoreBrand').value = s.brand;
-  document.getElementById('editStoreName').value = s.store_name;
-  document.getElementById('editStoreManagerName').value = s.manager_name;
-  document.getElementById('editStoreManagerEmail').value = s.manager_email;
+  const s = id ? adminStores.find(x=>x.id===id) : null;
+  if(id && !s) return;
+  if(!s && !myBrands().length){ toast('소속 브랜드가 지정되지 않아 매장코드를 생성할 수 없습니다. 마스터 관리자에게 문의해 주십시오.'); return; }
+  document.getElementById('storeFormTitle').textContent = s ? '매장 정보 수정' : '매장코드 생성';
+  document.getElementById('storeCodeHelp').textContent = s
+    ? '매장코드를 변경하면 해당 매장은 새 코드로만 접속할 수 있습니다. 변경 후 매장에 꼭 안내해 주십시오.'
+    : '영문·숫자·하이픈(-) 5~20자. 비워두면 자동 생성됩니다. 생성된 코드는 매장에만 안내해 주십시오.';
+  document.getElementById('editStoreCode').placeholder = s ? '' : '예: AL419 (비워두면 자동 생성)';
+  document.getElementById('editStoreId').value = s ? s.id : '';
+  document.getElementById('editStoreCode').value = s ? s.store_code : '';
+  // 신규 생성 시 브랜드 기본값: 목록에서 보고 있던 브랜드 (없으면 첫 번째)
+  const viewing = document.getElementById('storeBrandFilter').value;
+  document.getElementById('editStoreBrand').value = s ? s.brand : (myBrands().includes(viewing) ? viewing : myBrands()[0]);
+  document.getElementById('editStoreName').value = s ? s.store_name : '';
+  document.getElementById('editStoreManagerName').value = s ? s.manager_name : '';
+  document.getElementById('editStoreManagerEmail').value = s ? s.manager_email : '';
   showScreen('admin-store-form');
 }
 
 async function saveStore(){
+  const id = document.getElementById('editStoreId').value;
+  if(!id) return createStoreByAdmin();
   const payload = {
-    id: document.getElementById('editStoreId').value,
+    id,
     store_code: document.getElementById('editStoreCode').value.trim().toUpperCase(),
     brand: document.getElementById('editStoreBrand').value,
     store_name: document.getElementById('editStoreName').value.trim(),
@@ -830,6 +842,38 @@ async function saveStore(){
     showScreen('admin-store-list');
   }catch(e){
     toast('저장에 실패했습니다. ' + e.message);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+// 관리자 화면 매장코드 1건 생성: 서버의 일괄 생성 기능을 1건으로 호출 (브랜드 제한·중복 검사는 서버가 함)
+async function createStoreByAdmin(){
+  const store = {
+    row: 1,
+    store_code: document.getElementById('editStoreCode').value.trim().toUpperCase(),
+    brand: document.getElementById('editStoreBrand').value,
+    store_name: document.getElementById('editStoreName').value.trim(),
+    manager_name: document.getElementById('editStoreManagerName').value.trim(),
+    manager_email: document.getElementById('editStoreManagerEmail').value.trim(),
+  };
+  if(!store.brand || !store.store_name || !store.manager_name || !store.manager_email){
+    toast('필수 항목을 모두 입력해 주십시오.'); return;
+  }
+  if(store.store_code && !/^[A-Z0-9-]{5,20}$/.test(store.store_code)){
+    toast('매장코드는 영문, 숫자, 하이픈(-) 조합 5~20자로 입력해 주십시오.'); return;
+  }
+  const btn = document.getElementById('saveStoreBtn');
+  btn.disabled = true;
+  try{
+    const res = await callAdminAction('bulk_create_stores', { stores: [store] });
+    if(!res.ok){ toast('생성에 실패했습니다. ' + (res.errors?.[0]?.message || '')); return; }
+    const created = res.stores[0];
+    await loadStoreList();
+    showScreen('admin-store-list');
+    alert(`매장코드가 생성되었습니다.\n\n${created.brand} · ${created.store_name}\n매장코드: ${created.store_code}\n\n이 코드를 매장에 안내해 주십시오.`);
+  }catch(e){
+    toast('생성에 실패했습니다. ' + e.message);
   }finally{
     btn.disabled = false;
   }
