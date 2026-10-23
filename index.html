@@ -170,25 +170,25 @@
 
   <!-- ================= 관리자 메뉴 ================= -->
   <div id="screen-admin" class="card hidden">
-    <h2>관리자 메뉴</h2>
+    <h2>컨트롤타워 메뉴</h2>
     <div class="muted" id="adminWho"></div>
     <button onclick="loadStoreList(); showScreen('admin-store-list')">매장코드 목록</button>
     <button class="secondary" onclick="loadSubList(); showScreen('admin-sub')">수급사 관리</button>
     <button class="secondary" onclick="loadAllHistory(); showScreen('admin-history')">발송 이력 조회</button>
-    <button class="secondary master-only" onclick="loadAdminList(); showScreen('admin-accounts')">관리자 계정 관리</button>
-    <div style="margin-top:14px; text-align:center;"><a class="link" href="guide.html#admin" target="_blank" rel="noopener">📖 관리자 사용 설명서</a></div>
-    <div class="notice viewer-only">일반 관리자 계정은 소속 브랜드의 매장만 조회·수정·일괄 생성할 수 있습니다. 수급사는 모든 브랜드가 함께 사용하므로 수정 시 주의해 주십시오. 발송 이력 수정은 마스터 관리자에게 요청해 주십시오.</div>
+    <button class="secondary master-only" onclick="loadAdminList(); showScreen('admin-accounts')">컨트롤타워 계정 관리</button>
+    <div style="margin-top:14px; text-align:center;"><a class="link" href="guide.html#admin" target="_blank" rel="noopener">📖 컨트롤타워 사용 설명서</a></div>
+    <div class="notice viewer-only">컨트롤타워 계정은 소속 브랜드의 매장만 조회·수정·일괄 생성할 수 있습니다. 수급사는 모든 브랜드가 함께 사용하므로 수정 시 주의해 주십시오. 발송 이력 수정은 마스터 관리자에게 요청해 주십시오.</div>
   </div>
 
   <!-- ================= 관리자 계정 관리 (마스터 전용) ================= -->
   <div id="screen-admin-accounts" class="card hidden">
-    <div class="topbar"><h2 style="margin:0;">관리자 계정 관리</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
+    <div class="topbar"><h2 style="margin:0;">컨트롤타워 계정 관리</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
     <table class="list" id="adminListTable">
       <thead><tr><th>아이디</th><th>이름</th><th>소속 브랜드</th><th>생성일</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
-    <h2 style="margin-top:24px;">일반 관리자 추가</h2>
-    <div class="muted">일반 관리자는 소속 브랜드의 매장·발송 이력 조회, 소속 브랜드 매장 정보 수정·일괄 생성, 수급사 추가·수정을 할 수 있습니다. 발송 이력 수정과 관리자 계정 관리는 마스터만 가능합니다.</div>
+    <h2 style="margin-top:24px;">컨트롤타워 계정 추가</h2>
+    <div class="muted">컨트롤타워는 소속 브랜드의 매장·발송 이력 조회, 소속 브랜드 매장 정보 수정·일괄 생성, 수급사 추가·수정을 할 수 있습니다. 발송 이력 수정과 컨트롤타워 계정 관리는 마스터만 가능합니다.</div>
     <label>아이디 (영문/숫자 또는 이메일 주소, 3~50자)</label>
     <input id="newAdminId" autocomplete="off" autocapitalize="off">
     <label>이름</label>
@@ -197,7 +197,7 @@
     <select id="newAdminBrand"></select>
     <label>비밀번호 (8자 이상)</label>
     <input id="newAdminPw" type="password" autocomplete="new-password">
-    <button id="createAdminBtn" onclick="createAdmin()">관리자 추가</button>
+    <button id="createAdminBtn" onclick="createAdmin()">컨트롤타워 계정 추가</button>
   </div>
 
   <!-- ================= 매장코드 생성 (매장 사용자) ================= -->
@@ -214,9 +214,9 @@
     <input id="newManagerEmail" type="email" placeholder="예: hong@eland.co.kr">
     <label>매장코드 (영문/숫자/하이픈 5~20자, 미입력시 자동생성)</label>
     <input id="newStoreCode" placeholder="예: AL000" autocomplete="off" autocapitalize="characters">
-    <div class="notice">[개인정보 수집·이용 안내] 수집 항목: 매장 담당자명, 이메일 / 이용 목적: 하자개선 요청서 발송 및 수급사 회신 수신 / 담당자 변경 또는 삭제가 필요하면 관리자에게 요청해 주십시오.</div>
+    <div class="notice">[개인정보 수집·이용 안내] 수집 항목: 매장 담당자명, 이메일 / 이용 목적: 하자개선 요청서 발송 및 수급사 회신 수신 / 담당자 변경 또는 삭제가 필요하면 컨트롤타워에 요청해 주십시오.</div>
     <button id="createStoreBtn" onclick="createStore()">발급</button>
-    <div class="notice">매장코드는 매장 접속용 비밀번호로 사용되므로 매장 내부에서만 공유해 주시기 바랍니다. 매장코드를 분실하신 경우 관리자에게 문의해 주십시오.</div>
+    <div class="notice">매장코드는 매장 접속용 비밀번호로 사용되므로 매장 내부에서만 공유해 주시기 바랍니다. 매장코드를 분실하신 경우 컨트롤타워에 문의해 주십시오.</div>
   </div>
 
   <div id="screen-store-register-done" class="card hidden">
@@ -252,7 +252,7 @@
   <div id="screen-admin-store-bulk" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">매장코드 일괄 생성</h2><span class="link" onclick="loadStoreList(); showScreen('admin-store-list')">이전화면으로</span></div>
     <div id="bulkStep">
-      <div class="notice viewer-only">일반 관리자는 소속 브랜드 매장만 등록할 수 있습니다.</div>
+      <div class="notice viewer-only">컨트롤타워는 소속 브랜드 매장만 등록할 수 있습니다.</div>
       <div class="muted"><b>1.</b> 양식을 내려받아 '매장목록' 시트에 매장 정보를 한 줄에 하나씩 입력합니다.</div>
       <button class="secondary" onclick="downloadStoreTemplate()" style="margin-top:8px;">양식 다운로드 (.xlsx)</button>
       <div class="muted" style="margin-top:18px;"><b>2.</b> 작성한 파일을 업로드한 뒤 내용을 확인하고 생성합니다.</div>
@@ -290,7 +290,7 @@
     <div class="muted" id="storeCodeHelp">매장코드를 변경하면 해당 매장은 새 코드로만 접속할 수 있습니다. 변경 후 매장에 꼭 안내해 주십시오.</div>
     <label>브랜드</label>
     <select id="editStoreBrand"></select>
-    <div class="muted viewer-only">일반 관리자는 소속 브랜드 매장만 생성·수정할 수 있으며, 다른 브랜드로 변경할 수 없습니다.</div>
+    <div class="muted viewer-only">컨트롤타워는 소속 브랜드 매장만 생성·수정할 수 있으며, 다른 브랜드로 변경할 수 없습니다.</div>
     <label>매장명</label>
     <input id="editStoreName">
     <label>매장 담당자명</label>
@@ -403,7 +403,7 @@
       <label>수급인 회사명</label><input id="editCompanyName">
       <label>현장대리인명</label><input id="editManagerName">
       <label>수신 이메일</label><input id="editEmail" type="email" readonly>
-      <div class="muted">수신 이메일 변경은 관리자 화면 &gt; 수급사 관리에서 가능합니다.</div>
+      <div class="muted">수신 이메일 변경은 컨트롤타워 화면 &gt; 수급사 관리에서 가능합니다.</div>
     </div>
 
     <label>수행일자</label>
@@ -597,11 +597,11 @@ async function adminLogin(){
     adminInfo = admin;
     document.body.classList.toggle('is-master', admin.role === 'master');
     document.getElementById('adminWho').textContent =
-      `${admin.name} (${admin.login_id}) · ${admin.role === 'master' ? '마스터 관리자' : `일반 관리자 · 소속 브랜드: ${admin.brand || '미지정 — 마스터 관리자에게 지정 요청'}`}`;
+      `${admin.name} (${admin.login_id}) · ${admin.role === 'master' ? '마스터 관리자' : `컨트롤타워 · 소속 브랜드: ${admin.brand || '미지정 — 마스터 관리자에게 지정 요청'}`}`;
     // 매장 수정 화면의 브랜드 선택지는 내가 관리할 수 있는 브랜드만
     document.getElementById('editStoreBrand').innerHTML = myBrands().map(b=>`<option value="${b}">${b}</option>`).join('');
     document.getElementById('adminPw').value = '';
-    document.getElementById('storeBadge').textContent = '관리자 모드';
+    document.getElementById('storeBadge').textContent = '컨트롤타워 모드';
     document.getElementById('logoutBtn').style.display='block';
     showScreen('admin');
   }catch(e){
@@ -634,7 +634,7 @@ async function loadAdminList(){
   try{
     ({ admins } = await callAdminAction('list_admins'));
   }catch(e){ tbody.innerHTML = `<tr><td colspan="5">조회에 실패했습니다. ${escapeHtml(e.message)}</td></tr>`; return; }
-  if(!admins.length){ tbody.innerHTML = `<tr><td colspan="5">등록된 일반 관리자가 없습니다.</td></tr>`; return; }
+  if(!admins.length){ tbody.innerHTML = `<tr><td colspan="5">등록된 컨트롤타워 계정이 없습니다.</td></tr>`; return; }
   // 소속 브랜드는 목록에서 바로 변경 (미지정 계정은 아무 이력도 볼 수 없으므로 지정 필요)
   tbody.innerHTML = admins.map(a=>`<tr>
     <td>${escapeHtml(a.login_id)}</td><td>${escapeHtml(a.name)}</td>
@@ -670,17 +670,17 @@ async function createAdmin(){
   try{
     await callAdminAction('create_admin', { login_id, name, brand, password });
     ['newAdminId','newAdminName','newAdminPw','newAdminBrand'].forEach(id=>document.getElementById(id).value='');
-    toast('관리자 계정이 추가되었습니다.');
+    toast('컨트롤타워 계정이 추가되었습니다.');
     await loadAdminList();
   }catch(e){
-    toast('관리자 추가에 실패했습니다. ' + e.message);
+    toast('컨트롤타워 계정 추가에 실패했습니다. ' + e.message);
   }finally{
     btn.disabled = false;
   }
 }
 
 async function deleteAdmin(id, loginId){
-  if(!confirm(`관리자 계정 '${loginId}'을(를) 삭제하시겠습니까?`)) return;
+  if(!confirm(`컨트롤타워 계정 '${loginId}'을(를) 삭제하시겠습니까?`)) return;
   try{
     await callAdminAction('delete_admin', { id });
     toast('삭제되었습니다.');
@@ -1471,7 +1471,7 @@ async function submitReport(){
       if(!res.ok) throw new Error(await res.text());
       toast('요청서가 생성되어 메일로 발송되었습니다.');
     }catch(mailErr){
-      toast('요청서는 저장되었으나 메일 발송에 실패했습니다. 관리자에게 문의해 주십시오.');
+      toast('요청서는 저장되었으나 메일 발송에 실패했습니다. 컨트롤타워에 문의해 주십시오.');
     }
 
     showScreen('store-home');
