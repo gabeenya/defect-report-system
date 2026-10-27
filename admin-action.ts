@@ -6,7 +6,7 @@
 //            모든 조회·저장은 이 함수가 매장코드 또는 관리자 계정을 검증한 뒤 service role로 수행.
 //
 //   - 공개 action (로그인 불필요):
-//       register_store : 매장 사용자가 직접 매장코드 생성
+//       request_store  : 매장코드 신규 발급 신청 (마스터 승인 후 생성, 마스터에게 알림 메일)
 //   - 매장 action (매장코드 검증, payload.store_code):
 //       lookup_store   : 매장코드로 접속 (매장 정보 + 수급사 목록 반환)
 //       store_history  : 이 매장의 발송 이력
@@ -21,7 +21,9 @@
 //   - 관리자 수정 action (브랜드 무관):
 //       save_subcontractor
 //   - 마스터 전용 action:
-//       update_submission, list_admins, create_admin, update_admin_brand, delete_admin
+//       update_submission, list_admins, create_admin, update_admin_brand, delete_admin,
+//       list_store_requests, approve_store_request, reject_store_request
+//         (승인 시 매장코드 생성 + 신청서의 매장 담당자 이메일로 코드 발송)
 //
 // 로그인:
 //   마스터 관리자 = 아이디 ADMIN_ID(기본값 "master") + 비밀번호 ADMIN_PASSWORD
@@ -33,11 +35,15 @@
 //   ALLOWED_ORIGINS  - (선택) 호출을 허용할 사이트 주소(쉼표 구분). 비워두면 https://gabeenya.github.io
 //   ALLOWED_EMAIL_DOMAINS - (선택) 매장 담당자 이메일로 허용할 회사 도메인(쉼표 구분). 비워두면 eland.co.kr
 //                    → 외부인이 매장코드를 만들어 회사 이름으로 메일을 보내고 회신을 가로채는 것 방지
+//   MASTER_NOTIFY_EMAIL - 매장코드 발급 신청이 들어오면 알림을 받을 마스터 이메일
+//   SITE_URL         - (선택) 안내 메일에 넣을 시스템 주소. 비워두면 https://gabeenya.github.io/defect-report-system/
+//   SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM - send-defect-email과 공용 (안내 메일 발송용)
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY - Supabase가 자동 주입
 //
 // 무차별 대입 방지: 매장코드/관리자 로그인 실패가 IP당 15분에 10회를 넘으면 15분간 차단 (auth_failures 테이블)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 const ADMIN_PASSWORD = (Deno.env.get("ADMIN_PASSWORD") ?? "").trim();
 const ADMIN_ID = (Deno.env.get("ADMIN_ID") ?? "").trim() || "master";
@@ -46,6 +52,46 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
+
+/* ---------------- 안내 메일 (매장코드 발급 승인 요청/결과) ---------------- */
+// SMTP 설정은 send-defect-email과 같은 Secrets 사용 (Supabase Secrets는 모든 함수가 공유)
+const SMTP_HOST = (Deno.env.get("SMTP_HOST") ?? "").trim();
+const SMTP_USER = (Deno.env.get("SMTP_USER") ?? "").trim();
+const SMTP_PASSWORD = (Deno.env.get("SMTP_PASSWORD") ?? "").trim();
+const SMTP_FROM = (Deno.env.get("SMTP_FROM") ?? "").trim() || SMTP_USER;
+const MASTER_NOTIFY_EMAIL = (Deno.env.get("MASTER_NOTIFY_EMAIL") ?? "").trim();
+const SITE_URL = (Deno.env.get("SITE_URL") ?? "").trim() || "https://gabeenya.github.io/defect-report-system/";
+
+// 한글 제목을 RFC 2047 Base64 encoded-word로 인코딩 (send-defect-email의 encodeHeaderUtf8과 동일)
+function encodeHeaderUtf8(value: string): string {
+  const encoder = new TextEncoder();
+  const words: string[] = [];
+  let chunk: number[] = [];
+  const flush = () => {
+    if (!chunk.length) return;
+    words.push("=?UTF-8?B?" + btoa(String.fromCharCode(...chunk)) + "?=");
+    chunk = [];
+  };
+  for (const ch of value) {
+    const bytes = encoder.encode(ch);
+    if (chunk.length + bytes.length > 45) flush();
+    chunk.push(...bytes);
+  }
+  flush();
+  return " " + words.join(" ");
+}
+
+async function sendMail(to: string, subject: string, content: string) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASSWORD) throw new Error("SMTP 설정 없음");
+  const client = new SMTPClient({
+    connection: { hostname: SMTP_HOST, port: 465, tls: true, auth: { username: SMTP_USER, password: SMTP_PASSWORD } },
+  });
+  try {
+    await client.send({ from: SMTP_FROM, to, subject: encodeHeaderUtf8(subject), content });
+  } finally {
+    await client.close();
+  }
+}
 
 // index.html의 BRANDS와 동일하게 유지
 const BRANDS = ["애슐리퀸즈","피자몰","로운","자연별곡","델리바이애슐리","리미니","프랑제리","프랜차이즈","카페"];
@@ -209,25 +255,8 @@ function validateStoreFields(f: any) {
   return null;
 }
 
-// deno-lint-ignore no-explicit-any
-async function registerStore(payload: any) {
-  const fields = {
-    brand: str(payload?.brand),
-    store_name: str(payload?.store_name),
-    manager_name: str(payload?.manager_name),
-    manager_email: str(payload?.manager_email),
-  };
-  const customCode = str(payload?.store_code).toUpperCase();
-
-  const invalid = validateStoreFields(fields);
-  if (invalid) return text(invalid, 400);
-  if (customCode && !STORE_CODE_RE.test(customCode)) {
-    return text(STORE_CODE_RULE, 400);
-  }
-  if (customCode && await isStoreCodeTaken(customCode)) {
-    return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력해 주십시오.", 409);
-  }
-
+// 매장코드 1건 생성 (승인 시 사용). customCode가 비어 있으면 자동생성, 중복이면 null
+async function insertStore(fields: Record<string, string>, customCode: string) {
   // 직접 지정한 코드는 1회만 시도, 자동생성은 중복 시 몇 번 재시도
   const attempts = customCode ? 1 : 5;
   for (let i = 0; i < attempts; i++) {
@@ -237,11 +266,151 @@ async function registerStore(payload: any) {
       .insert({ store_code, ...fields })
       .select("id, store_code, store_name, brand, manager_name")
       .single();
-    if (!error) return json({ ok: true, store: data });
+    if (!error) return data;
     if (error.code !== "23505") throw new Error(error.message); // 23505 = unique 위반
-    if (customCode) return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력해 주십시오.", 409);
   }
-  return text("매장코드 자동 발급에 실패했습니다. 다시 시도해 주십시오.", 500);
+  return null;
+}
+
+/* ---------------- 매장코드 신규 발급 신청 → 마스터 승인 ---------------- */
+// 현장은 '신청'만 하고, 마스터가 승인해야 매장코드가 생성됨.
+// 매장코드는 화면에 보여주지 않고 신청서의 매장 담당자(회사 이메일)에게만 메일로 보냄
+// → 회사 도메인 이메일을 아는 외부인이 신청해도 코드를 받을 수 없음
+const PENDING_PER_EMAIL = 3; // 같은 담당자 이메일로 동시에 대기 중일 수 있는 신청 수
+
+// deno-lint-ignore no-explicit-any
+async function requestStore(payload: any) {
+  const fields = {
+    brand: str(payload?.brand),
+    store_name: str(payload?.store_name),
+    manager_name: str(payload?.manager_name),
+    manager_email: str(payload?.manager_email),
+  };
+  const requested_code = str(payload?.store_code).toUpperCase();
+
+  const invalid = validateStoreFields(fields);
+  if (invalid) return text(invalid, 400);
+  if (requested_code && !STORE_CODE_RE.test(requested_code)) return text(STORE_CODE_RULE, 400);
+  if (requested_code && await isStoreCodeTaken(requested_code)) {
+    return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력하거나 비워 주십시오.", 409);
+  }
+
+  // 이메일은 대소문자 구분 없이 비교 (대기 건은 많지 않으므로 전부 가져와서 비교)
+  const { data: allPending, error: pErr } = await supabaseAdmin
+    .from("store_requests").select("brand, store_name, manager_email").eq("status", "pending");
+  if (pErr) throw new Error(pErr.message);
+  const email = fields.manager_email.toLowerCase();
+  const pending = (allPending ?? []).filter((r) => r.manager_email.toLowerCase() === email);
+  if (pending.some((r) => r.brand === fields.brand && r.store_name === fields.store_name)) {
+    return text("같은 매장으로 이미 신청한 건이 승인 대기 중입니다. 승인 결과 메일을 기다려 주십시오.", 409);
+  }
+  if (pending.length >= PENDING_PER_EMAIL) {
+    return text("승인 대기 중인 신청이 너무 많습니다. 승인 결과 메일을 받은 뒤 다시 신청해 주십시오.", 429);
+  }
+
+  const { data, error } = await supabaseAdmin.from("store_requests")
+    .insert({ ...fields, requested_code: requested_code || null })
+    .select("id, created_at").single();
+  if (error) throw new Error(error.message);
+
+  // 마스터에게 알림 메일 (실패해도 신청은 접수됨 — 마스터는 관리자 화면에서 확인 가능)
+  if (MASTER_NOTIFY_EMAIL) {
+    try {
+      await sendMail(
+        MASTER_NOTIFY_EMAIL,
+        `[매장코드 발급 승인 요청] ${fields.brand} ${fields.store_name}`,
+        "매장코드 신규 발급 신청이 접수되었습니다.\n\n" +
+          `브랜드: ${fields.brand}\n매장명: ${fields.store_name}\n` +
+          `매장 담당자: ${fields.manager_name} (${fields.manager_email})\n` +
+          `희망 매장코드: ${requested_code || "(자동생성)"}\n\n` +
+          "결과물 하자 개선 요청서 시스템 > 컨트롤타워 로그인(마스터) > '매장코드 발급 승인' 메뉴에서 승인 또는 반려해 주십시오.\n" +
+          `${SITE_URL}`,
+      );
+    } catch (err) {
+      console.error("승인 요청 알림 메일 발송 실패:", err);
+    }
+  }
+  return json({ ok: true });
+}
+
+async function listStoreRequests() {
+  const { data, error } = await supabaseAdmin
+    .from("store_requests").select("*")
+    .order("created_at", { ascending: false }).limit(200);
+  if (error) throw new Error(error.message);
+  return json({ ok: true, requests: data });
+}
+
+// deno-lint-ignore no-explicit-any
+async function approveStoreRequest(payload: any, admin: Admin) {
+  const id = str(payload?.id);
+  const code = str(payload?.store_code).toUpperCase(); // 마스터가 승인 화면에서 정한 코드 (비우면 자동생성)
+  if (!id) return text("승인할 신청이 지정되지 않았습니다.", 400);
+  if (code && !STORE_CODE_RE.test(code)) return text(STORE_CODE_RULE, 400);
+  if (code && await isStoreCodeTaken(code)) return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력하거나 비워 주십시오.", 409);
+
+  // 'pending' 건만 선점 → 두 번 눌러도 매장이 두 번 생기지 않음
+  const { data: req, error: claimErr } = await supabaseAdmin.from("store_requests")
+    .update({ status: "approved", decided_by: admin.login_id, decided_at: new Date().toISOString() })
+    .eq("id", id).eq("status", "pending")
+    .select("brand, store_name, manager_name, manager_email").maybeSingle();
+  if (claimErr) throw new Error(claimErr.message);
+  if (!req) return text("이미 처리되었거나 존재하지 않는 신청입니다.", 409);
+
+  let store;
+  try {
+    store = await insertStore(req, code);
+  } finally {
+    if (!store) await supabaseAdmin.from("store_requests")
+      .update({ status: "pending", decided_by: null, decided_at: null }).eq("id", id);
+  }
+  if (!store) return text("이미 사용 중인 매장코드입니다. 다른 코드를 입력하거나 비워 주십시오.", 409);
+  await supabaseAdmin.from("store_requests").update({ issued_code: store.store_code }).eq("id", id);
+
+  let mailed = true;
+  try {
+    await sendMail(
+      req.manager_email,
+      `[매장코드 발급 완료] ${req.brand} ${req.store_name}`,
+      `${req.manager_name}님, 안녕하세요.\n\n신청하신 매장코드가 발급되었습니다.\n\n` +
+        `브랜드: ${req.brand}\n매장명: ${req.store_name}\n매장코드: ${store.store_code}\n\n` +
+        `아래 주소에서 매장코드를 입력해 접속해 주십시오.\n${SITE_URL}\n\n` +
+        "※ 매장코드는 매장 접속 비밀번호와 같습니다. 매장 내부에서만 공유하고 외부(수급사 포함)에 알리지 마십시오.",
+    );
+  } catch (err) {
+    console.error("매장코드 발급 메일 발송 실패:", err);
+    mailed = false;
+  }
+  return json({ ok: true, store, mailed });
+}
+
+// deno-lint-ignore no-explicit-any
+async function rejectStoreRequest(payload: any, admin: Admin) {
+  const id = str(payload?.id);
+  const reason = str(payload?.reason);
+  if (!id) return text("반려할 신청이 지정되지 않았습니다.", 400);
+  if (reason.length > 500) return text("반려 사유가 너무 깁니다.", 400);
+  const { data: req, error } = await supabaseAdmin.from("store_requests")
+    .update({ status: "rejected", reject_reason: reason || null, decided_by: admin.login_id, decided_at: new Date().toISOString() })
+    .eq("id", id).eq("status", "pending")
+    .select("brand, store_name, manager_name, manager_email").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!req) return text("이미 처리되었거나 존재하지 않는 신청입니다.", 409);
+
+  let mailed = true;
+  try {
+    await sendMail(
+      req.manager_email,
+      `[매장코드 발급 반려] ${req.brand} ${req.store_name}`,
+      `${req.manager_name}님, 안녕하세요.\n\n신청하신 매장코드 발급이 반려되었습니다.\n\n` +
+        `브랜드: ${req.brand}\n매장명: ${req.store_name}\n반려 사유: ${reason || "(없음)"}\n\n` +
+        "문의 사항은 소속 브랜드 컨트롤타워에 연락해 주십시오.",
+    );
+  } catch (err) {
+    console.error("반려 안내 메일 발송 실패:", err);
+    mailed = false;
+  }
+  return json({ ok: true, mailed });
 }
 
 // brandScope: 일반 관리자의 소속 브랜드 (마스터는 undefined = 제한 없음)
@@ -569,11 +738,11 @@ async function handle(req: Request): Promise<Response> {
   const ip = clientIp(req);
 
   // ---------- 공개 action ----------
-  if (action === "register_store") {
-    // 매장코드 대량 생성 방지: IP당 15분에 10건까지
+  if (action === "request_store") {
+    // 신청 대량 접수(알림 메일 폭탄) 방지: IP당 15분에 10건까지
     const regKey = "register:" + ip;
-    if (await isLocked(regKey)) return text("매장코드 발급 요청이 너무 많습니다. 잠시 후 다시 시도해 주십시오.", 429);
-    const res = await registerStore(payload);
+    if (await isLocked(regKey)) return text("매장코드 발급 신청이 너무 많습니다. 잠시 후 다시 시도해 주십시오.", 429);
+    const res = await requestStore(payload);
     if (res.ok) await recordFailure(regKey);
     return res;
   }
@@ -660,6 +829,14 @@ async function handle(req: Request): Promise<Response> {
   if (action in MASTER_ACTIONS) {
     if (admin.role !== "master") return text("마스터 관리자만 수정할 수 있습니다.", 403);
     return await MASTER_ACTIONS[action](payload);
+  }
+
+  // ---------- 매장코드 발급 신청 승인 (마스터 전용) ----------
+  if (["list_store_requests", "approve_store_request", "reject_store_request"].includes(action)) {
+    if (admin.role !== "master") return text("마스터 관리자만 승인할 수 있습니다.", 403);
+    if (action === "list_store_requests") return await listStoreRequests();
+    if (action === "approve_store_request") return await approveStoreRequest(payload, admin);
+    return await rejectStoreRequest(payload, admin);
   }
 
   return text("알 수 없는 요청입니다.", 400);

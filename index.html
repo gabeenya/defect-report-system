@@ -137,7 +137,7 @@
     <input id="entryCode" placeholder="예: AL000 (대소문자 구분 없음)" autocomplete="off" autocapitalize="characters">
     <button onclick="enterStore()">접속</button>
     <div style="margin-top:12px; text-align:center;">
-      <span class="link" onclick="openStoreRegister()">매장코드 신규 발급 (코드가 없는 매장만)</span>
+      <span class="link" onclick="openStoreRegister()">매장코드 신규 발급 신청 (코드가 없는 매장만)</span>
       <span class="muted" style="margin:0 6px;">|</span>
       <a class="link" href="guide.html">📖 사용 설명서</a>
     </div>
@@ -175,6 +175,7 @@
     <button onclick="loadStoreList(); showScreen('admin-store-list')">매장코드 목록</button>
     <button class="secondary" onclick="loadSubList(); showScreen('admin-sub')">수급사 관리</button>
     <button class="secondary" onclick="loadAllHistory(); showScreen('admin-history')">발송 이력 조회</button>
+    <button class="secondary master-only" onclick="loadStoreRequests(); showScreen('admin-requests')">매장코드 발급 승인<span id="requestCount"></span></button>
     <button class="secondary master-only" onclick="loadAdminList(); showScreen('admin-accounts')">컨트롤타워 계정 관리</button>
     <div style="margin-top:14px; text-align:center;"><a class="link" href="guide.html#admin" target="_blank" rel="noopener">📖 컨트롤타워 사용 설명서</a></div>
     <div class="notice viewer-only">컨트롤타워 계정은 소속 브랜드의 매장만 조회·수정·일괄 생성할 수 있습니다. 수급사는 모든 브랜드가 함께 사용하므로 수정 시 주의해 주십시오. 발송 이력 수정은 마스터 관리자에게 요청해 주십시오.</div>
@@ -200,10 +201,10 @@
     <button id="createAdminBtn" onclick="createAdmin()">컨트롤타워 계정 추가</button>
   </div>
 
-  <!-- ================= 매장코드 생성 (매장 사용자) ================= -->
+  <!-- ================= 매장코드 신규 발급 신청 (매장 사용자 → 마스터 승인) ================= -->
   <div id="screen-store-register" class="card hidden">
-    <div class="topbar"><h2 style="margin:0;">매장코드 신규 발급</h2><span class="link" onclick="showScreen('entry')">뒤로</span></div>
-    <div class="notice">이미 매장코드를 부여 받은 매장은 새로 발급하지 말고, 부여 받은 코드 그대로 접속해 주십시오. 신규 발급은 매장코드가 없는 신규 매장만 이용해 주십시오.</div>
+    <div class="topbar"><h2 style="margin:0;">매장코드 신규 발급 신청</h2><span class="link" onclick="showScreen('entry')">뒤로</span></div>
+    <div class="notice">이미 매장코드를 부여 받은 매장은 신청하지 말고, 부여 받은 코드 그대로 접속해 주십시오. 신규 발급은 매장코드가 없는 신규 매장만 신청해 주십시오.<br>신청 후 마스터 관리자가 확인·승인하면 <b>매장 담당자 이메일로 매장코드가 발송</b>됩니다.</div>
     <label>브랜드</label>
     <select id="newBrand"></select>
     <label>매장명</label>
@@ -212,19 +213,37 @@
     <input id="newManagerName">
     <label>매장 담당자 이메일 (회사 이메일 @eland.co.kr만 가능)</label>
     <input id="newManagerEmail" type="email" placeholder="예: hong@eland.co.kr">
-    <label>매장코드 (영문/숫자/하이픈 5~20자, 미입력시 자동생성)</label>
+    <label>희망 매장코드 (영문/숫자/하이픈 5~20자, 미입력시 자동생성)</label>
     <input id="newStoreCode" placeholder="예: AL000" autocomplete="off" autocapitalize="characters">
-    <div class="notice">[개인정보 수집·이용 안내] 수집 항목: 매장 담당자명, 이메일 / 이용 목적: 하자개선 요청서 발송 및 수급사 회신 수신 / 담당자 변경 또는 삭제가 필요하면 컨트롤타워에 요청해 주십시오.</div>
-    <button id="createStoreBtn" onclick="createStore()">발급</button>
+    <div class="notice">[개인정보 수집·이용 안내] 수집 항목: 매장 담당자명, 이메일 / 이용 목적: 매장코드 발급 안내, 하자개선 요청서 발송 및 수급사 회신 수신 / 담당자 변경 또는 삭제가 필요하면 컨트롤타워에 요청해 주십시오.</div>
+    <button id="createStoreBtn" onclick="createStore()">발급 신청</button>
     <div class="notice">매장코드는 매장 접속용 비밀번호로 사용되므로 매장 내부에서만 공유해 주시기 바랍니다. 매장코드를 분실하신 경우 컨트롤타워에 문의해 주십시오.</div>
   </div>
 
   <div id="screen-store-register-done" class="card hidden">
-    <h2>매장코드 발급 완료</h2>
+    <h2>매장코드 발급 신청 완료</h2>
     <div class="muted" id="registeredStoreLabel"></div>
-    <div class="code-box" id="registeredStoreCode"></div>
-    <div class="notice">발급된 매장코드를 반드시 기록해 두시기 바랍니다. 이후 이 코드로 접속하실 수 있습니다.</div>
-    <button onclick="enterRegisteredStore()">이 코드로 바로 접속</button>
+    <div class="notice">마스터 관리자가 확인 후 승인하면 <b id="registeredStoreEmail"></b> 로 매장코드가 발송됩니다. 메일을 받은 뒤 첫 화면에서 매장코드를 입력해 접속해 주십시오.<br>메일이 오지 않으면 스팸메일함을 확인하거나 소속 브랜드 컨트롤타워에 문의해 주십시오.</div>
+    <button onclick="showScreen('entry')">첫 화면으로</button>
+  </div>
+
+  <!-- ================= 매장코드 발급 승인 (마스터 전용) ================= -->
+  <div id="screen-admin-requests" class="card hidden">
+    <div class="topbar"><h2 style="margin:0;">매장코드 발급 승인</h2><span class="link" onclick="loadRequestCount(); showScreen('admin')">이전화면으로</span></div>
+    <div class="muted">현장에서 신청한 매장코드 발급 건입니다. 매장코드 칸은 비워두면 자동 생성됩니다. 승인하면 매장이 등록되고 신청서의 담당자 이메일로 매장코드가 발송됩니다.</div>
+    <div class="table-scroll">
+      <table class="list" id="requestTable">
+        <thead><tr><th>신청일</th><th>브랜드</th><th>매장명</th><th>담당자</th><th>이메일</th><th>매장코드</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h2 style="margin-top:24px;">처리 완료 (최근)</h2>
+    <div class="table-scroll">
+      <table class="list" id="requestDoneTable">
+        <thead><tr><th>처리일</th><th>결과</th><th>브랜드</th><th>매장명</th><th>담당자</th><th>매장코드/반려 사유</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- ================= 매장 목록 ================= -->
@@ -471,7 +490,6 @@ let subcontractors = [];   // 캐시
 let selectedPhotos = [];   // File[]
 let adminAuth = null;      // {login_id, password} 관리자 로그인 후 메모리에만 보관 (Edge Function이 매 요청 검증)
 let adminInfo = null;      // {role: 'master'|'admin', login_id, name}
-let registeredStore = null; // 방금 생성한 매장 (바로 접속용)
 let adminStores = [];      // 관리자 매장 목록 캐시 (수정 폼용)
 let adminSubmissions = []; // 관리자 발송 이력 캐시 (수정 폼용)
 
@@ -604,6 +622,7 @@ async function adminLogin(){
     document.getElementById('storeBadge').textContent = '컨트롤타워 모드';
     document.getElementById('logoutBtn').style.display='block';
     showScreen('admin');
+    loadRequestCount();
   }catch(e){
     adminAuth = null;
     toast('아이디 또는 비밀번호가 올바르지 않습니다.');
@@ -690,7 +709,7 @@ async function deleteAdmin(id, loginId){
   }
 }
 
-/* ---- 매장코드 생성 (매장 사용자가 직접) ---- */
+/* ---- 매장코드 발급 신청 (매장 사용자 → 마스터 승인 후 담당자 이메일로 코드 발송) ---- */
 function openStoreRegister(){
   ['newStoreName','newManagerName','newManagerEmail','newStoreCode'].forEach(id=>document.getElementById(id).value='');
   showScreen('store-register');
@@ -708,22 +727,88 @@ async function createStore(){
   const btn = document.getElementById('createStoreBtn');
   btn.disabled = true;
   try{
-    const { store } = await callPublicAction('register_store', { store_code, store_name, brand, manager_name, manager_email });
-    registeredStore = store;
-    document.getElementById('registeredStoreLabel').textContent = `${store.brand} · ${store.store_name}`;
-    document.getElementById('registeredStoreCode').textContent = store.store_code;
+    await callPublicAction('request_store', { store_code, store_name, brand, manager_name, manager_email });
+    document.getElementById('registeredStoreLabel').textContent = `${brand} · ${store_name}`;
+    document.getElementById('registeredStoreEmail').textContent = manager_email;
     showScreen('store-register-done');
   }catch(error){
-    toast('매장코드 발급에 실패했습니다. ' + error.message);
+    toast('발급 신청에 실패했습니다. ' + error.message);
   }finally{
     btn.disabled = false;
   }
 }
 
-async function enterRegisteredStore(){
-  if(!registeredStore) return;
-  document.getElementById('entryCode').value = registeredStore.store_code;
-  await enterStore(); // 일반 접속과 동일하게 서버에서 매장·수급사 정보를 받아 접속
+/* ---- 매장코드 발급 승인 (마스터 전용) ---- */
+let storeRequests = [];
+
+// 메뉴 버튼에 대기 건수 표시
+async function loadRequestCount(){
+  const el = document.getElementById('requestCount');
+  el.textContent = '';
+  if(adminInfo?.role !== 'master') return;
+  try{
+    ({ requests: storeRequests } = await callAdminAction('list_store_requests'));
+    const n = storeRequests.filter(r=>r.status==='pending').length;
+    el.textContent = n ? ` (대기 ${n}건)` : '';
+  }catch(e){ /* 메뉴 표시용이므로 실패해도 무시 */ }
+}
+
+async function loadStoreRequests(){
+  const tbody = document.querySelector('#requestTable tbody');
+  const doneBody = document.querySelector('#requestDoneTable tbody');
+  tbody.innerHTML = `<tr><td colspan="7">불러오는 중입니다...</td></tr>`;
+  doneBody.innerHTML = '';
+  try{
+    ({ requests: storeRequests } = await callAdminAction('list_store_requests'));
+  }catch(e){ tbody.innerHTML = `<tr><td colspan="7">조회에 실패했습니다. ${escapeHtml(e.message)}</td></tr>`; return; }
+  const pending = storeRequests.filter(r=>r.status==='pending').reverse(); // 먼저 신청한 건부터
+  const done = storeRequests.filter(r=>r.status!=='pending').slice(0, 30);
+  tbody.innerHTML = pending.length ? pending.map(r=>`<tr>
+    <td>${formatDateTime(r.created_at)}</td><td>${escapeHtml(r.brand)}</td><td>${escapeHtml(r.store_name)}</td>
+    <td>${escapeHtml(r.manager_name)}</td><td>${escapeHtml(r.manager_email)}</td>
+    <td><input id="reqCode-${r.id}" value="${escapeHtml(r.requested_code || '')}" placeholder="자동생성" autocomplete="off" style="margin:0; min-width:110px; padding:6px 8px; font-size:13px;"></td>
+    <td><button class="small" onclick="approveStoreRequest('${r.id}', this)">승인</button>
+        <span class="link" style="margin-left:8px;" onclick="rejectStoreRequest('${r.id}')">반려</span></td>
+  </tr>`).join('') : `<tr><td colspan="7">승인 대기 중인 신청이 없습니다.</td></tr>`;
+  doneBody.innerHTML = done.length ? done.map(r=>`<tr>
+    <td>${formatDateTime(r.decided_at).slice(0,10)}</td>
+    <td>${r.status==='approved' ? '<span class="status sent">승인</span>' : '<span class="status failed">반려</span>'}</td>
+    <td>${escapeHtml(r.brand)}</td><td>${escapeHtml(r.store_name)}</td><td>${escapeHtml(r.manager_name)}</td>
+    <td>${escapeHtml(r.status==='approved' ? (r.issued_code || '') : (r.reject_reason || ''))}</td>
+  </tr>`).join('') : `<tr><td colspan="6">처리한 신청이 없습니다.</td></tr>`;
+}
+
+async function approveStoreRequest(id, btn){
+  const r = storeRequests.find(x=>x.id===id);
+  if(!r) return;
+  const store_code = document.getElementById('reqCode-'+id).value.trim().toUpperCase();
+  if(store_code && !/^[A-Z0-9-]{5,20}$/.test(store_code)){ toast('매장코드는 영문, 숫자, 하이픈(-) 조합 5~20자로 입력해 주십시오.'); return; }
+  if(!confirm(`${r.brand} · ${r.store_name}\n담당자: ${r.manager_name} (${r.manager_email})\n\n승인하시겠습니까? 매장코드가 생성되어 담당자 이메일로 발송됩니다.`)) return;
+  btn.disabled = true;
+  try{
+    const { store, mailed } = await callAdminAction('approve_store_request', { id, store_code });
+    alert(`승인되었습니다.\n\n${store.brand} · ${store.store_name}\n매장코드: ${store.store_code}\n\n` +
+      (mailed ? `${r.manager_email} 로 매장코드를 발송했습니다.` : `※ 안내 메일 발송에 실패했습니다. 매장에 매장코드를 직접 안내해 주십시오.`));
+  }catch(e){
+    toast('승인에 실패했습니다. ' + e.message);
+  }finally{
+    btn.disabled = false;
+  }
+  await loadStoreRequests();
+}
+
+async function rejectStoreRequest(id){
+  const r = storeRequests.find(x=>x.id===id);
+  if(!r) return;
+  const reason = prompt(`${r.brand} · ${r.store_name} 신청을 반려합니다.\n반려 사유를 입력해 주십시오. (담당자에게 메일로 안내됩니다)`);
+  if(reason === null) return;
+  try{
+    const { mailed } = await callAdminAction('reject_store_request', { id, reason: reason.trim() });
+    toast(mailed ? '반려되었습니다. 담당자에게 안내 메일을 보냈습니다.' : '반려되었습니다. (안내 메일 발송 실패)');
+  }catch(e){
+    toast('반려에 실패했습니다. ' + e.message);
+  }
+  await loadStoreRequests();
 }
 
 async function loadStoreList(){

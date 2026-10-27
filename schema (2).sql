@@ -168,3 +168,27 @@ update storage.buckets
 -- ※ admin-action 재배포 전에 먼저 실행할 것 (새 코드가 이 컬럼을 조회함)
 -- ============================================================
 alter table admins add column if not exists brand text;
+
+-- ============================================================
+-- [추가 7] 매장코드 신규 발급 신청 → 마스터 승인
+-- 현장에서는 매장코드를 바로 만들지 못하고 '신청'만 함. 마스터가 승인하면 그때 매장코드가 생성되고
+-- 신청서의 매장 담당자 이메일로 매장코드가 발송됨 (반려 시 반려 사유 발송).
+-- anon key로는 접근 불가 (정책 없음 = 전면 차단, admin-action이 service role로만 접근).
+-- ※ admin-action 재배포 전에 먼저 실행할 것 (새 코드가 이 테이블을 사용함)
+-- ============================================================
+create table if not exists store_requests (
+  id uuid primary key default gen_random_uuid(),
+  brand text not null,
+  store_name text not null,
+  manager_name text not null,
+  manager_email text not null,
+  requested_code text,                    -- 신청자가 희망한 매장코드 (비우면 승인 시 자동생성)
+  status text not null default 'pending', -- pending | approved | rejected
+  issued_code text,                       -- 승인 시 실제 발급된 매장코드
+  reject_reason text,
+  decided_by text,                        -- 승인/반려한 관리자 아이디
+  decided_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists store_requests_status on store_requests (status, created_at);
+alter table store_requests enable row level security;
