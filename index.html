@@ -437,7 +437,7 @@
     <label>하자 개선 요청사항</label>
     <textarea id="reportDesc" placeholder="예: 업무범위와 관련된 개선 요청 - 다수의 오염 발생"></textarea>
 
-    <label>사진 첨부 (최대 5장)</label>
+    <label>사진 첨부 (최대 20장)</label>
     <!-- capture 속성이 있으면 모바일에서 카메라만 열리므로 촬영용/앨범용 입력을 분리 -->
     <input id="reportPhotosCamera" class="photo-input" type="file" accept="image/*" capture="environment" hidden>
     <input id="reportPhotosAlbum" class="photo-input" type="file" accept="image/*" multiple hidden>
@@ -488,6 +488,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth:
 let currentStore = null;   // {id, store_code, store_name, brand, manager_name, manager_email}
 let subcontractors = [];   // 캐시
 let selectedPhotos = [];   // File[]
+const MAX_PHOTOS = 20;     // 서버(admin-action.ts)의 MAX_PHOTOS와 같은 값
 let adminAuth = null;      // {login_id, password} 관리자 로그인 후 메모리에만 보관 (Edge Function이 매 요청 검증)
 let adminInfo = null;      // {role: 'master'|'admin', login_id, name}
 let adminStores = [];      // 관리자 매장 목록 캐시 (수정 폼용)
@@ -1393,8 +1394,8 @@ async function sanitizePhoto(file){
 document.querySelectorAll('.photo-input').forEach(input=>input.addEventListener('change', async (e)=>{
   const picked = Array.from(e.target.files);
   e.target.value = '';
-  const files = picked.slice(0, 5 - selectedPhotos.length);
-  if(picked.length > files.length) toast('사진은 최대 5장까지 첨부할 수 있습니다.');
+  const files = picked.slice(0, MAX_PHOTOS - selectedPhotos.length);
+  if(picked.length > files.length) toast(`사진은 최대 ${MAX_PHOTOS}장까지 첨부할 수 있습니다.`);
   for(const f of files){
     try{
       selectedPhotos.push(await sanitizePhoto(f));
@@ -1402,7 +1403,7 @@ document.querySelectorAll('.photo-input').forEach(input=>input.addEventListener(
       toast('사진을 불러오지 못했습니다. 다른 사진을 선택해 주십시오.');
     }
   }
-  selectedPhotos = selectedPhotos.slice(0,5);
+  selectedPhotos = selectedPhotos.slice(0, MAX_PHOTOS);
   renderPhotoPreview();
 }));
 function renderPhotoPreview(){
@@ -1423,7 +1424,8 @@ function removePhoto(i){
 
 /* ---- 문서(.pdf) 생성 ----
    화면에 보일 양식을 화면 밖(off-screen)에 그려서 html2canvas로 캡처한 뒤
-   jsPDF로 A4 페이지에 나눠 담는다. 한글은 브라우저가 그대로 렌더링하므로
+   jsPDF로 A4 페이지에 나눠 담는다. 글 줄·사진이 페이지 경계에서 잘리지 않도록
+   나눔 위치를 조정하고, 페이지별로 따로 캡처한다. 한글은 브라우저가 그대로 렌더링하므로
    폰트 임베딩 없이도 깨지지 않는다. */
 async function buildPdf(payload, photoFiles){
   const { jsPDF } = window.jspdf;
@@ -1469,25 +1471,63 @@ async function buildPdf(payload, photoFiles){
     img.complete ? Promise.resolve() : new Promise(res=>{ img.onload=res; img.onerror=res; })
   ));
 
-  const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff' });
-  document.body.removeChild(container);
-
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  const imgWidth = pageWidth;
-  const imgHeight = canvas.height * imgWidth / canvas.width;
-  const imgData = canvas.toDataURL('image/jpeg', 0.92);
+  const pxPerPt = 760 / pageWidth;              // 양식 폭 760px = A4 폭
+  const pageHpx = pageHeight * pxPerPt;         // A4 한 페이지 높이(px)
+  const topMarginPt = 24;                       // 2페이지부터 위쪽 여백
+  const topMarginPx = topMarginPt * pxPerPt;
 
-  let heightLeft = imgHeight;
-  let position = 0;
-  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-  heightLeft -= pageHeight;
-  while(heightLeft > 0){
-    position = heightLeft - imgHeight;
-    pdf.addPage();
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
+  // 페이지 경계에서 잘리면 안 되는 덩어리(글 한 줄, 사진 1장)의 세로 위치 수집
+  const base = container.getBoundingClientRect().top;
+  const atoms = [];
+  const range = document.createRange();
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  while(walker.nextNode()){
+    range.selectNodeContents(walker.currentNode);
+    for(const r of range.getClientRects()) atoms.push([r.top - base, r.bottom - base]);
+  }
+  container.querySelectorAll('img').forEach(img=>{
+    const r = img.getBoundingClientRect();
+    atoms.push([r.top - base, r.bottom - base]);
+  });
+
+  // 페이지 나눔 위치 계산: 경계에 걸친 덩어리가 있으면 그 덩어리 바로 위에서 자름
+  const total = container.offsetHeight;
+  const pages = [];
+  let start = 0;
+  while(start < total - 1){
+    const avail = pages.length ? pageHpx - topMarginPx : pageHpx;
+    let end = Math.min(start + avail, total);
+    if(end < total){
+      let crossing;
+      while((crossing = atoms.filter(([t,b]) => t < end && b > end && t > start + 40)).length){
+        end = Math.min(...crossing.map(a=>a[0])) - 2;
+      }
+    }
+    pages.push([start, end]);
+    start = end;
+  }
+
+  // 페이지마다 해당 구간만 따로 캡처 (긴 그림 한 장을 만들지 않아 휴대폰 브라우저 크기 한도에 걸리지 않음)
+  container.style.position = 'static';
+  for(let i=0;i<pages.length;i++){
+    const [s, e] = pages[i];
+    const frame = document.createElement('div');
+    Object.assign(frame.style, {
+      position:'fixed', left:'-9999px', top:'0', width:'760px',
+      height:(e - s)+'px', overflow:'hidden', background:'#ffffff'
+    });
+    container.style.marginTop = (-s)+'px';
+    frame.appendChild(container);
+    document.body.appendChild(frame);
+    const canvas = await html2canvas(frame, { scale: 2, backgroundColor: '#ffffff' });
+    document.body.removeChild(frame);
+
+    if(i > 0) pdf.addPage();
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG',
+      0, i > 0 ? topMarginPt : 0, pageWidth, canvas.height * pageWidth / canvas.width);
   }
 
   return pdf.output('blob');
@@ -1528,6 +1568,7 @@ async function submitReport(){
 
     const photoPaths = [];
     for(let i=0;i<photoUploads.length;i++){
+      statusEl.textContent = `사진 업로드 중... (${i+1}/${photoUploads.length})`;
       const { error: pErr } = await bucket.uploadToSignedUrl(photoUploads[i].path, photoUploads[i].token, selectedPhotos[i], { contentType: 'image/jpeg' });
       if(!pErr) photoPaths.push(photoUploads[i].path);
     }

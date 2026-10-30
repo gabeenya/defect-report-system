@@ -33,7 +33,7 @@ create table if not exists submissions (
   work_location text not null,            -- 수행장소 (매장명 자동기재)
   work_type text not null,                -- 수행작업
   defect_description text not null,       -- 하자 개선 요청사항
-  photo_urls text[] default '{}',         -- 첨부 사진 Storage 경로 (최대 5장)
+  photo_urls text[] default '{}',         -- 첨부 사진 Storage 경로 (최대 20장)
   document_url text,                      -- 생성된 요청서(.docx) Storage 경로
   email_status text not null default 'pending', -- pending | sent | failed
   email_error text,                       -- 발송 실패 시 에러 메시지

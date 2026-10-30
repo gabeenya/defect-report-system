@@ -118,7 +118,7 @@ async function hasMagic(path: string, magic: number[]) {
 const LOGIN_ID_RE = /^[a-zA-Z0-9._@-]{3,50}$/; // 이메일 주소 형태 아이디 허용
 const EDITABLE_STATUS = ["sent", "failed"]; // 'pending'으로 되돌리면 재발송 대상이 되므로 제외
 const BUCKET = "defect-reports";
-const MAX_PHOTOS = 5;
+const MAX_PHOTOS = 20; // 화면(index.html)의 MAX_PHOTOS와 같은 값
 
 // CORS: 허용한 사이트에서만 브라우저 호출 허용 (Access-Control-Allow-Origin은 요청마다 붙임)
 const ALLOWED_ORIGINS = ((Deno.env.get("ALLOWED_ORIGINS") ?? "").trim() || "https://gabeenya.github.io")
@@ -646,19 +646,19 @@ async function storeHistory(store: Store) {
   return json({ ok: true, history });
 }
 
-// 업로드 경로: <매장 id>/<타임스탬프>_report.pdf, <매장 id>/<타임스탬프>_photo1~5.jpg
+// 업로드 경로: <매장 id>/<타임스탬프>_report.pdf, <매장 id>/<타임스탬프>_photo1~20.jpg
 // deno-lint-ignore no-explicit-any
 async function storeUploadUrls(store: Store, payload: any) {
   const photoCount = Math.min(Math.max(parseInt(payload?.photo_count) || 0, 0), MAX_PHOTOS);
   const stamp = Date.now();
   const paths = [`${store.id}/${stamp}_report.pdf`];
   for (let i = 1; i <= photoCount; i++) paths.push(`${store.id}/${stamp}_photo${i}.jpg`);
-  const uploads = [];
-  for (const path of paths) {
+  // 사진이 많을 수 있으므로 업로드 주소를 동시에 발급
+  const uploads = await Promise.all(paths.map(async (path) => {
     const { data, error } = await supabaseAdmin.storage.from(BUCKET).createSignedUploadUrl(path);
     if (error) throw new Error("업로드 준비 실패: " + error.message);
-    uploads.push({ path: data.path, token: data.token });
-  }
+    return { path: data.path, token: data.token };
+  }));
   return json({ ok: true, document: uploads[0], photos: uploads.slice(1) });
 }
 
@@ -676,14 +676,14 @@ async function storeSubmit(store: Store, payload: any) {
 
   // 업로드 경로는 반드시 이 매장 폴더의 정해진 형식이어야 함 (다른 매장/임의 파일 지정 차단)
   const docRe = /^([0-9a-f-]{36})\/(\d+)_report\.pdf$/;
-  const photoRe = /^([0-9a-f-]{36})\/(\d+)_photo[1-5]\.jpg$/;
+  const photoRe = /^([0-9a-f-]{36})\/(\d+)_photo([1-9]\d?)\.jpg$/;
   const document_url = str(payload?.document_path);
   const photo_urls: string[] = Array.isArray(payload?.photo_paths) ? payload.photo_paths.map(str) : [];
   const doc = docRe.exec(document_url);
   const badPath = !doc || doc[1] !== store.id || photo_urls.length > MAX_PHOTOS ||
     !photo_urls.every((p) => {
       const m = photoRe.exec(p);
-      return m && m[1] === store.id && m[2] === doc[2];
+      return m && m[1] === store.id && m[2] === doc[2] && Number(m[3]) <= MAX_PHOTOS;
     });
   if (badPath) return text("첨부 파일 경로가 올바르지 않습니다.", 400);
 
@@ -696,7 +696,9 @@ async function storeSubmit(store: Store, payload: any) {
   // 실제 파일 형식 확인: 위장 파일이면 저장소에서 지우고 거부
   const badFiles: string[] = [];
   if (!(await hasMagic(document_url, PDF_MAGIC))) badFiles.push(document_url);
-  for (const p of photo_urls) if (!(await hasMagic(p, JPEG_MAGIC))) badFiles.push(p);
+  // 사진이 많을 수 있으므로 동시에 확인
+  const photoOk = await Promise.all(photo_urls.map((p) => hasMagic(p, JPEG_MAGIC)));
+  photo_urls.forEach((p, i) => { if (!photoOk[i]) badFiles.push(p); });
   if (badFiles.length) {
     await supabaseAdmin.storage.from(BUCKET).remove([document_url, ...photo_urls]);
     return text("첨부 파일 형식이 올바르지 않습니다. 다시 작성해 주십시오.", 400);
