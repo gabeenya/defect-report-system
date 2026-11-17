@@ -192,3 +192,11 @@ create table if not exists store_requests (
 );
 create index if not exists store_requests_status on store_requests (status, created_at);
 alter table store_requests enable row level security;
+
+-- ============================================================
+-- [추가 8] 추가 마스터 계정
+-- 컨트롤타워 계정에 마스터 권한(is_master)을 부여하면 기본 마스터(master)와 동일한 권한을 가짐.
+-- 매장코드 발급 신청 알림 메일은 기존대로 Secrets의 MASTER_NOTIFY_EMAIL 한 곳으로만 발송.
+-- ※ admin-action 재배포 전에 먼저 실행할 것 (새 코드가 이 컬럼을 조회함)
+-- ============================================================
+alter table admins add column if not exists is_master boolean not null default false;

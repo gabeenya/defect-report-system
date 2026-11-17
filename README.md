@@ -128,6 +128,18 @@ const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                  // 1번에서 복사
 3. `admin-action` Edge Function을 최신 코드로 재배포
 4. GitHub에 `index.html`, `guide.html` 반영
 
+## 4-6. 추가 마스터 계정 (업데이트)
+
+- 마스터가 **컨트롤타워 계정 관리**에서 계정 추가 시 "마스터 권한 부여" 체크, 또는 목록의 "마스터 권한" 체크박스로 부여·해제
+- 마스터 권한 계정은 기본 마스터(`master`)와 동일한 권한 (전체 브랜드 조회, 매장코드 발급 승인, 발송 이력 수정, 계정 관리)
+- 본인 계정의 마스터 권한 해제·삭제는 불가 (다른 마스터가 처리). 기본 마스터(`master`)는 Secrets 계정이라 목록에 나오지 않고 삭제되지 않음
+- 매장코드 발급 신청 알림 메일은 기존대로 `MASTER_NOTIFY_EMAIL` 한 곳으로만 발송
+
+배포 순서 (순서 중요):
+1. `schema (2).sql` 맨 아래 "[추가 8]" 블록을 SQL Editor에서 실행
+2. `admin-action` Edge Function을 최신 코드로 재배포
+3. GitHub에 `index.html` 반영
+
 ## 5. 보안 구조 및 운영 수칙 (전사 배포 전 필수)
 
 ### 구조

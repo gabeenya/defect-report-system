@@ -185,11 +185,11 @@
   <div id="screen-admin-accounts" class="card hidden">
     <div class="topbar"><h2 style="margin:0;">컨트롤타워 계정 관리</h2><span class="link" onclick="showScreen('admin')">이전화면으로</span></div>
     <table class="list" id="adminListTable">
-      <thead><tr><th>아이디</th><th>이름</th><th>소속 브랜드</th><th>생성일</th><th></th></tr></thead>
+      <thead><tr><th>아이디</th><th>이름</th><th>소속 브랜드</th><th>마스터 권한</th><th>생성일</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
     <h2 style="margin-top:24px;">컨트롤타워 계정 추가</h2>
-    <div class="muted">컨트롤타워는 소속 브랜드의 매장·발송 이력 조회, 소속 브랜드 매장 정보 수정·일괄 생성, 수급사 추가·수정을 할 수 있습니다. 발송 이력 수정과 컨트롤타워 계정 관리는 마스터만 가능합니다.</div>
+    <div class="muted">컨트롤타워는 소속 브랜드의 매장·발송 이력 조회, 소속 브랜드 매장 정보 수정·일괄 생성, 수급사 추가·수정을 할 수 있습니다. 발송 이력 수정과 컨트롤타워 계정 관리는 마스터만 가능합니다.<br>'마스터 권한'을 체크하면 소속 브랜드와 관계없이 마스터와 동일한 권한(전체 조회, 매장코드 발급 승인, 계정 관리 등)을 갖습니다.</div>
     <label>아이디 (영문/숫자 또는 이메일 주소, 3~50자)</label>
     <input id="newAdminId" autocomplete="off" autocapitalize="off">
     <label>이름</label>
@@ -198,6 +198,7 @@
     <select id="newAdminBrand"></select>
     <label>비밀번호 (8자 이상)</label>
     <input id="newAdminPw" type="password" autocomplete="new-password">
+    <label style="display:flex; align-items:center; gap:8px;"><input id="newAdminMaster" type="checkbox" style="width:auto; margin:0;"> 마스터 권한 부여</label>
     <button id="createAdminBtn" onclick="createAdmin()">컨트롤타워 계정 추가</button>
   </div>
 
@@ -649,12 +650,12 @@ function myBrands(){
 /* ---- 관리자 계정 관리 (마스터 전용) ---- */
 async function loadAdminList(){
   const tbody = document.querySelector('#adminListTable tbody');
-  tbody.innerHTML = `<tr><td colspan="5">불러오는 중입니다...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6">불러오는 중입니다...</td></tr>`;
   let admins;
   try{
     ({ admins } = await callAdminAction('list_admins'));
-  }catch(e){ tbody.innerHTML = `<tr><td colspan="5">조회에 실패했습니다. ${escapeHtml(e.message)}</td></tr>`; return; }
-  if(!admins.length){ tbody.innerHTML = `<tr><td colspan="5">등록된 컨트롤타워 계정이 없습니다.</td></tr>`; return; }
+  }catch(e){ tbody.innerHTML = `<tr><td colspan="6">조회에 실패했습니다. ${escapeHtml(e.message)}</td></tr>`; return; }
+  if(!admins.length){ tbody.innerHTML = `<tr><td colspan="6">등록된 컨트롤타워 계정이 없습니다.</td></tr>`; return; }
   // 소속 브랜드는 목록에서 바로 변경 (미지정 계정은 아무 이력도 볼 수 없으므로 지정 필요)
   tbody.innerHTML = admins.map(a=>`<tr>
     <td>${escapeHtml(a.login_id)}</td><td>${escapeHtml(a.name)}</td>
@@ -662,6 +663,7 @@ async function loadAdminList(){
       ${a.brand ? '' : `<option value="" selected>미지정</option>`}
       ${BRANDS.map(b=>`<option value="${b}" ${a.brand===b?'selected':''}>${b}</option>`).join('')}
     </select></td>
+    <td><input type="checkbox" ${a.is_master?'checked':''} onchange="updateAdminMaster('${a.id}', '${escapeHtml(a.login_id)}', this)" style="width:auto; margin:0;"></td>
     <td>${formatDateTime(a.created_at).slice(0,10)}</td>
     <td><span class="link" onclick="deleteAdmin('${a.id}', '${escapeHtml(a.login_id)}')">삭제</span></td>
   </tr>`).join('');
@@ -677,19 +679,37 @@ async function updateAdminBrand(id, select){
   await loadAdminList();
 }
 
+async function updateAdminMaster(id, loginId, checkbox){
+  const is_master = checkbox.checked;
+  const msg = is_master
+    ? `'${loginId}' 계정에 마스터 권한을 부여하시겠습니까?\n전체 브랜드 조회, 매장코드 발급 승인, 계정 관리 등 모든 권한을 갖게 됩니다.`
+    : `'${loginId}' 계정의 마스터 권한을 해제하시겠습니까?`;
+  if(!confirm(msg)){ checkbox.checked = !is_master; return; }
+  try{
+    await callAdminAction('update_admin_master', { id, is_master });
+    toast(is_master ? '마스터 권한이 부여되었습니다.' : '마스터 권한이 해제되었습니다.');
+  }catch(e){
+    toast('변경에 실패했습니다. ' + e.message);
+  }
+  await loadAdminList();
+}
+
 async function createAdmin(){
   const login_id = document.getElementById('newAdminId').value.trim();
   const name = document.getElementById('newAdminName').value.trim();
   const brand = document.getElementById('newAdminBrand').value;
   const password = document.getElementById('newAdminPw').value;
+  const is_master = document.getElementById('newAdminMaster').checked;
   if(!login_id || !name || !password){ toast('필수 항목을 모두 입력해 주십시오.'); return; }
+  if(is_master && !confirm(`'${login_id}' 계정을 마스터 권한으로 추가하시겠습니까?\n전체 브랜드 조회, 매장코드 발급 승인, 계정 관리 등 모든 권한을 갖게 됩니다.`)) return;
   if(!brand){ toast('소속 브랜드를 선택해 주십시오.'); return; }
   if(password.length < 8){ toast('비밀번호는 8자 이상으로 입력해 주십시오.'); return; }
   const btn = document.getElementById('createAdminBtn');
   btn.disabled = true;
   try{
-    await callAdminAction('create_admin', { login_id, name, brand, password });
+    await callAdminAction('create_admin', { login_id, name, brand, password, is_master });
     ['newAdminId','newAdminName','newAdminPw','newAdminBrand'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('newAdminMaster').checked = false;
     toast('컨트롤타워 계정이 추가되었습니다.');
     await loadAdminList();
   }catch(e){

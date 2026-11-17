@@ -21,13 +21,14 @@
 //   - 관리자 수정 action (브랜드 무관):
 //       save_subcontractor
 //   - 마스터 전용 action:
-//       update_submission, list_admins, create_admin, update_admin_brand, delete_admin,
+//       update_submission, list_admins, create_admin, update_admin_brand, update_admin_master, delete_admin,
 //       list_store_requests, approve_store_request, reject_store_request
 //         (승인 시 매장코드 생성 + 신청서의 매장 담당자 이메일로 코드 발송)
 //
 // 로그인:
 //   마스터 관리자 = 아이디 ADMIN_ID(기본값 "master") + 비밀번호 ADMIN_PASSWORD
 //   일반 관리자   = admins 테이블 계정 (마스터가 생성, 비밀번호는 PBKDF2 해시로 저장)
+//   추가 마스터   = admins 테이블 계정 중 is_master = true (기본 마스터와 동일 권한)
 //
 // 필요 환경변수 (Supabase 대시보드 > Edge Functions > Secrets 에서 등록):
 //   ADMIN_PASSWORD   - 마스터 관리자 비밀번호 (index.html에는 존재하지 않음)
@@ -204,14 +205,16 @@ async function authenticate(loginId: string, password: string): Promise<Admin | 
   }
   const { data } = await supabaseAdmin
     .from("admins")
-    .select("login_id, name, brand, password_hash, password_salt")
+    .select("login_id, name, brand, is_master, password_hash, password_salt")
     .eq("login_id", loginId)
     .maybeSingle();
   if (!data) return null;
   const hash = await hashPassword(password, data.password_salt);
-  return safeEqual(hash, data.password_hash)
-    ? { role: "admin", login_id: data.login_id, name: data.name, brand: data.brand ?? null }
-    : null;
+  if (!safeEqual(hash, data.password_hash)) return null;
+  // 마스터 권한이 부여된 계정은 기본 마스터와 동일한 권한 (전체 브랜드)
+  return data.is_master
+    ? { role: "master", login_id: data.login_id, name: data.name, brand: null }
+    : { role: "admin", login_id: data.login_id, name: data.name, brand: data.brand ?? null };
 }
 
 /* ---------------- 매장 ---------------- */
@@ -565,7 +568,7 @@ async function updateSubmission(payload: any) {
 async function listAdmins() {
   const { data, error } = await supabaseAdmin
     .from("admins")
-    .select("id, login_id, name, brand, created_at")
+    .select("id, login_id, name, brand, is_master, created_at")
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return json({ ok: true, admins: data });
@@ -577,6 +580,7 @@ async function createAdmin(payload: any) {
   const name = str(payload?.name);
   const brand = str(payload?.brand);
   const password = String(payload?.password ?? "");
+  const is_master = payload?.is_master === true;
   if (!login_id || !name || !password) return text("필수 항목을 모두 입력해 주십시오.", 400);
   if (!BRANDS.includes(brand)) return text("소속 브랜드를 목록에서 선택해 주십시오.", 400);
   if (!LOGIN_ID_RE.test(login_id)) return text("아이디는 영문, 숫자, 마침표(.), 밑줄(_), 하이픈(-), @ 조합 3~50자로 입력해 주십시오.", 400);
@@ -586,7 +590,7 @@ async function createAdmin(payload: any) {
 
   const password_salt = newSalt();
   const password_hash = await hashPassword(password, password_salt);
-  const { error } = await supabaseAdmin.from("admins").insert({ login_id, name, brand, password_hash, password_salt });
+  const { error } = await supabaseAdmin.from("admins").insert({ login_id, name, brand, is_master, password_hash, password_salt });
   if (error?.code === "23505") return text("이미 사용 중인 아이디입니다.", 409);
   if (error) throw new Error(error.message);
   return json({ ok: true });
@@ -603,10 +607,28 @@ async function updateAdminBrand(payload: any) {
   return json({ ok: true });
 }
 
+// 본인 계정인지 확인 (본인의 마스터 권한 해제·삭제 방지 → 실수로 스스로 권한을 잃지 않도록)
+async function isSelf(id: string, me: Admin) {
+  const { data } = await supabaseAdmin.from("admins").select("login_id").eq("id", id).maybeSingle();
+  return data?.login_id === me.login_id;
+}
+
 // deno-lint-ignore no-explicit-any
-async function deleteAdmin(payload: any) {
+async function updateAdminMaster(payload: any, me: Admin) {
+  const id = str(payload?.id);
+  const is_master = payload?.is_master === true;
+  if (!id) return text("수정할 계정이 지정되지 않았습니다.", 400);
+  if (!is_master && await isSelf(id, me)) return text("본인 계정의 마스터 권한은 해제할 수 없습니다.", 400);
+  const { error } = await supabaseAdmin.from("admins").update({ is_master }).eq("id", id);
+  if (error) throw new Error(error.message);
+  return json({ ok: true });
+}
+
+// deno-lint-ignore no-explicit-any
+async function deleteAdmin(payload: any, me: Admin) {
   const id = str(payload?.id);
   if (!id) return text("삭제할 계정이 지정되지 않았습니다.", 400);
+  if (await isSelf(id, me)) return text("본인 계정은 삭제할 수 없습니다.", 400);
   const { error } = await supabaseAdmin.from("admins").delete().eq("id", id);
   if (error) throw new Error(error.message);
   return json({ ok: true });
@@ -821,16 +843,17 @@ async function handle(req: Request): Promise<Response> {
   if (action === "save_subcontractor") return await saveSubcontractor(payload);
 
   // ---------- 마스터 전용 action ----------
-  const MASTER_ACTIONS: Record<string, (p: unknown) => Promise<Response>> = {
+  const MASTER_ACTIONS: Record<string, (p: unknown, me: Admin) => Promise<Response>> = {
     update_submission: updateSubmission,
     list_admins: listAdmins,
     create_admin: createAdmin,
     update_admin_brand: updateAdminBrand,
+    update_admin_master: updateAdminMaster,
     delete_admin: deleteAdmin,
   };
   if (action in MASTER_ACTIONS) {
     if (admin.role !== "master") return text("마스터 관리자만 수정할 수 있습니다.", 403);
-    return await MASTER_ACTIONS[action](payload);
+    return await MASTER_ACTIONS[action](payload, admin);
   }
 
   // ---------- 매장코드 발급 신청 승인 (마스터 전용) ----------
